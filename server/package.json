@@ -1,0 +1,16 @@
+{
+  "name": "wayfinder-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.20.0",
+    "@hono/node-server": "^1.14.0",
+    "hono": "^4.7.0",
+    "mongodb": "^6.16.0",
+    "tsx": "^4.19.0"
+  }
+}

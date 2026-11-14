@@ -1,0 +1,859 @@
+/*
+ * Wayfinder UI: dark frosted glass over the camera or the x-ray scene.
+ *
+ * Accessibility rules this file keeps:
+ * - Text only ever sits on a panel whose tint is dark enough for white text to stay above 7:1 contrast,
+ *   whatever the camera shows behind it. The blur is decoration; the tint does the work.
+ * - One warm accent (amber) marks "where to go". Status colors always come with words or icons.
+ * - Touch targets are 56 px or larger; the view switch is 76 px.
+ * - "High contrast" (settings, or the OS preference) swaps glass for solid black with white outlines.
+ */
+
+:root {
+  --ink: #ffffff;
+  --ink-soft: rgba(255, 255, 255, 0.72);
+  --accent: #ffc53d;
+  --accent-ink: #1a1300;
+  --ok: #5ee6a8;
+  --warn: #ffb057;
+  --danger: #ff7a6b;
+  --info: #8fc8ff;
+
+  --glass: rgba(16, 18, 24, 0.72);
+  --glass-heavy: rgba(16, 18, 24, 0.86);
+  --stroke: rgba(255, 255, 255, 0.16);
+  --stroke-width: 1px;
+  --blur: blur(22px) saturate(160%);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+
+  --radius: 22px;
+  --radius-sm: 14px;
+  --text: 1rem;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: dark;
+}
+
+:root.large-text {
+  --text: 1.3rem;
+}
+
+/* Solid, outlined surfaces for people who need maximum contrast. */
+:root.hc {
+  --ink-soft: #ffffff;
+  --glass: #000000;
+  --glass-heavy: #000000;
+  --stroke: #ffffff;
+  --stroke-width: 2px;
+  --blur: none;
+  --shadow: none;
+  --accent: #ffd60a;
+}
+
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
+  :root {
+    --ink-soft: #ffffff;
+    --glass: #000000;
+    --glass-heavy: #000000;
+    --stroke: #ffffff;
+    --stroke-width: 2px;
+    --blur: none;
+    --shadow: none;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #07080b;
+  color: var(--ink);
+  font-family: ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 17px;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Shared frosted surface. */
+.glass {
+  background: var(--glass);
+  border: var(--stroke-width) solid var(--stroke);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
+}
+
+/* ------------------------------------------------------------------ Start */
+
+.start {
+  height: 100%;
+  overflow-y: auto;
+  padding: calc(var(--safe-top) + 36px) 22px calc(var(--safe-bottom) + 28px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+  background:
+    radial-gradient(90% 55% at 50% 0%, rgba(255, 197, 61, 0.2), transparent 70%),
+    radial-gradient(80% 50% at 100% 100%, rgba(143, 200, 255, 0.14), transparent 70%),
+    #07080b;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.start-mark {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  color: var(--accent);
+}
+
+.start h1 {
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.start-tag {
+  margin: -8px 0 0;
+  max-width: 26ch;
+  font-size: 1.1rem;
+  color: var(--ink-soft);
+}
+
+.start-button {
+  flex: none;
+  width: min(100%, 420px);
+  min-height: 30vh;
+  margin: 6px 0;
+  border: 0;
+  border-radius: 40px;
+  background: var(--ink);
+  color: #0b0c10;
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  box-shadow: 0 18px 50px rgba(255, 255, 255, 0.14), inset 0 -6px 0 rgba(0, 0, 0, 0.08);
+  transition: transform 0.12s ease;
+}
+
+.start-button:active {
+  transform: scale(0.98);
+}
+
+.start-button:disabled {
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--ink);
+  font-size: 1.7rem;
+  box-shadow: none;
+}
+
+.start-error {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.start-help {
+  width: min(100%, 420px);
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  text-align: left;
+  font-size: 1rem;
+}
+
+.start-help p {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+}
+
+.start-help ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.start-help li {
+  display: flex;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--stroke);
+}
+
+.start-help li::before {
+  content: '';
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.start-help li[data-result='granted']::before {
+  background: var(--ok);
+}
+
+.start-help li[data-result='denied']::before {
+  background: var(--danger);
+}
+
+.start-result {
+  color: var(--ink-soft);
+}
+
+.start-help li[data-result='denied'] .start-result {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.start-help .start-sim {
+  margin: 10px 0 0;
+  color: var(--info);
+}
+
+/* ------------------------------------------------------------------ Main */
+
+.main {
+  position: fixed;
+  inset: 0;
+  background: #000;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+/* Soft scrims so the glass panels never sit on raw bright video. */
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.45), transparent 22%),
+    linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent 34%);
+  pointer-events: none;
+}
+
+.stage-talking::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  z-index: 2;
+  border: 4px solid var(--accent);
+  border-radius: 34px;
+  box-shadow: 0 0 40px rgba(255, 197, 61, 0.45) inset;
+  pointer-events: none;
+}
+
+.camera,
+.xray {
+  position: absolute;
+  inset: 0;
+  background: #05060a;
+}
+
+.camera video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.camera-note,
+.xray-wait {
+  position: absolute;
+  z-index: 3;
+  inset: 42% 28px auto;
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--glass-heavy);
+  border: var(--stroke-width) solid var(--stroke);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  text-align: center;
+  font-size: calc(var(--text) * 1.1);
+  pointer-events: none;
+}
+
+/* ---- Bottom dock: settings · view switch · microphone */
+
+.mode-button {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 20px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 196px;
+  min-height: 76px;
+  padding: 0 30px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #0b0c10;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease;
+}
+
+.mode-button:active {
+  transform: translateX(-50%) scale(0.97);
+}
+
+.mode-button svg {
+  width: 30px;
+  height: 30px;
+}
+
+:root.hc .mode-button {
+  background: var(--accent);
+  outline: 3px solid #000;
+  box-shadow: 0 0 0 5px #fff;
+}
+
+.dock-button {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(var(--safe-bottom) + 28px);
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  padding: 0;
+}
+
+.dock-button svg {
+  width: 28px;
+  height: 28px;
+}
+
+.dock-left {
+  left: 18px;
+}
+
+.dock-right {
+  right: 18px;
+}
+
+.dock-button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
+
+/* ---- Status pill, top-left */
+
+.status {
+  position: absolute;
+  z-index: 20;
+  top: calc(var(--safe-top) + 12px);
+  left: 12px;
+  max-width: calc(70vw - 60px);
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: var(--text);
+  pointer-events: none;
+}
+
+.status p {
+  margin: 0;
+}
+
+.status-place {
+  font-weight: 650;
+}
+
+.status .status-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 0.88em;
+  color: var(--ink-soft);
+}
+
+.status-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.status-dot[data-state='live'] {
+  background: var(--ok);
+}
+
+.status-dot[data-state='speaking'] {
+  background: var(--info);
+  box-shadow: 0 0 0 4px rgba(143, 200, 255, 0.3);
+}
+
+.status .status-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--stroke);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.status-target svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+/* ------------------------------------------------------------------ Minimap */
+
+.minimap {
+  position: absolute;
+  z-index: 20;
+  top: calc(var(--safe-top) + 12px);
+  right: 12px;
+  width: 30vw;
+  min-width: 112px;
+  max-width: 250px;
+  aspect-ratio: 1;
+  border: var(--stroke-width) solid var(--stroke);
+  border-radius: 26px;
+  overflow: hidden;
+  background: #0b0d12;
+  box-shadow: var(--shadow);
+}
+
+.minimap-expanded {
+  z-index: 40;
+  inset: 0;
+  width: auto;
+  max-width: none;
+  aspect-ratio: auto;
+  border-radius: 0;
+  border: 0;
+}
+
+.minimap-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* Heading-up map: "forward" is always the top of the map. */
+.minimap-arrow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  margin: -27px 0 0 -8px;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 15px solid #ffffff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+.minimap-credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 2px 8px;
+  border-top-left-radius: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 9px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.minimap:not(.minimap-expanded) .minimap-credit {
+  left: 0;
+  border-radius: 0;
+  text-align: center;
+}
+
+.minimap-open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+
+.minimap-close {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  right: 14px;
+  min-height: 56px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #0b0c10;
+  font-size: 1.15rem;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+}
+
+.minimap-hint {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  left: 14px;
+  margin: 0;
+  padding: 10px 14px;
+  max-width: 52%;
+  border-radius: var(--radius-sm);
+  background: var(--glass-heavy);
+  border: var(--stroke-width) solid var(--stroke);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ Captions and talk hint */
+
+.captions {
+  position: absolute;
+  z-index: 20;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--safe-bottom) + 116px);
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  font-size: calc(var(--text) * 1.2);
+  font-weight: 550;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+.caption {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.caption + .caption {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--stroke);
+}
+
+.caption-who {
+  display: block;
+  margin-bottom: 1px;
+  font-size: 0.62em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
+.caption-agent .caption-who {
+  color: var(--info);
+}
+
+.caption-app .caption-who {
+  color: var(--accent);
+}
+
+.talk-hint {
+  position: absolute;
+  z-index: 21;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-weight: 650;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.talk-hint[data-on='true'] {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
+
+/* ------------------------------------------------------------------ Settings sheet */
+
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.45);
+  border: 0;
+  padding: 0;
+}
+
+.sheet {
+  position: absolute;
+  z-index: 61;
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--safe-bottom) + 10px);
+  max-height: calc(100% - var(--safe-top) - 40px);
+  overflow-y: auto;
+  padding: 10px 18px 18px;
+  border-radius: 32px;
+  background: var(--glass-heavy);
+  animation: sheet-in 0.22s ease-out;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+.sheet-grip {
+  width: 44px;
+  height: 5px;
+  margin: 0 auto 10px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.sheet h2 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--stroke);
+  background: none;
+  text-align: left;
+}
+
+.switch-text strong {
+  display: block;
+  font-size: calc(var(--text) * 1.05);
+  font-weight: 650;
+}
+
+.switch-text span {
+  font-size: 0.86em;
+  color: var(--ink-soft);
+}
+
+.switch-track {
+  flex: none;
+  position: relative;
+  width: 58px;
+  height: 34px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.2);
+  border: var(--stroke-width) solid var(--stroke);
+  transition: background 0.15s ease;
+}
+
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.switch-row[aria-checked='true'] .switch-track {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.switch-row[aria-checked='true'] .switch-track::after {
+  transform: translateX(24px);
+}
+
+.sheet-done {
+  width: 100%;
+  min-height: 60px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #0b0c10;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ Dev simulator */
+
+.sim,
+.sim-open {
+  position: absolute;
+  z-index: 50;
+  left: 12px;
+  top: calc(var(--safe-top) + 150px);
+}
+
+.sim-open {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.sim {
+  width: min(372px, calc(100vw - 24px));
+  max-height: calc(100vh - 420px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--glass-heavy);
+  font-size: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.sim header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.sim label {
+  display: block;
+  margin: 4px 0;
+}
+
+.sim input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.sim-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.sim-row label {
+  margin: 0;
+}
+
+.sim button,
+.sim select,
+.sim input:not([type='range']):not([type='checkbox']) {
+  padding: 6px 11px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: inherit;
+}
+
+.sim button[aria-pressed='true'] {
+  background: var(--danger);
+  color: #1a0500;
+}
+
+.sim button:disabled {
+  opacity: 0.4;
+}
+
+.sim-keys {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+}
+
+.sim-output {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
