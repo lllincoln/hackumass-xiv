@@ -41,6 +41,8 @@ export type FeatureX = {
   buildingId?: string;
   /** Entrances: direction of the wall the door is in, radians from +x (east), counter-clockwise. */
   wallAngle?: number;
+  /** Snapped features: direction toward the path they stand beside, radians from +x (east), counter-clockwise. */
+  facing?: number;
 };
 
 export type PlaceX = GazetteerEntry & { id: string; pos: Vec2; keys: string[] };
@@ -112,7 +114,7 @@ export function indexPack(raw: CampusPack): PackIndex {
   const features: FeatureX[] = raw.features.map((f) => {
     const lon = f.snapped?.lon ?? f.lon;
     const lat = f.snapped?.lat ?? f.lat;
-    const fx: FeatureX = { id: f.id, kind: f.kind, name: f.name, pos: toENU(origin, lon, lat), lon, lat, buildingId: f.buildingId };
+    const fx: FeatureX = { id: f.id, kind: f.kind, name: f.name, pos: toENU(origin, lon, lat), lon, lat, buildingId: f.buildingId, facing: f.snapped?.facing };
     if (f.kind === 'entrance' && f.buildingId) {
       const b = buildingById.get(f.buildingId);
       if (b) {

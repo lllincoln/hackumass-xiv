@@ -14,6 +14,7 @@ import { reportsApi } from '../reports/api';
 import { markOwnReport, removeReport, upsertReport } from '../reports/watcher';
 import { orientation } from '../sensors/orientation';
 import { useStore } from '../store';
+import { distancePhrase, unitName } from '../units';
 import { live } from './session';
 
 type Args = Record<string, unknown>;
@@ -44,10 +45,10 @@ function need(): { pack: PackIndex; pos: Vec2 } {
 }
 
 /** Distance plus direction (clock face relative to the phone, and compass) from the user to a point. */
-function whereIs(pos: Vec2, target: Vec2): { distance_m: number; clock?: string; compass: string } {
+function whereIs(pos: Vec2, target: Vec2): { distance: string; clock?: string; compass: string } {
   const b = bearingENU(pos, target);
   return {
-    distance_m: Math.round(dist(pos, target)),
+    distance: distancePhrase(dist(pos, target)),
     ...(orientation.has ? { clock: clockPhrase(angleDiff(orientation.heading, b)) } : {}),
     compass: compassWord(b),
   };
@@ -103,7 +104,8 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
     const ll = s.pos ? toLonLat(s.pack, s.pos) : null;
     return {
       position_known: Boolean(s.pos),
-      ...(ll ? { lon: Number(ll.lon.toFixed(6)), lat: Number(ll.lat.toFixed(6)), accuracy_m: Math.round(s.sigma) } : {}),
+      units: unitName(),
+      ...(ll ? { lon: Number(ll.lon.toFixed(6)), lat: Number(ll.lat.toFixed(6)), accuracy: `within ${distancePhrase(s.sigma)}` } : {}),
       where: s.indoors ? 'indoors' : 'outdoors',
       ...(building ? { building: building.name ?? 'an unnamed building' } : {}),
       ...(orientation.has ? { facing: compassWord(orientation.heading), heading_deg: Math.round(orientation.heading) } : { facing: 'unknown' }),
@@ -112,7 +114,7 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
         ? {
             to: s.nav.label,
             type: s.nav.kind === 'route' ? 'turn-by-turn' : 'bearing only',
-            remaining_m: s.nav.remainingM,
+            remaining: distancePhrase(s.nav.remainingM),
             ...(s.nav.route ? { next_instruction: s.nav.route.steps[s.nav.stepIndex]?.text } : {}),
             ...(s.nav.entrance && !s.nav.entrance.reached ? { phase: 'walking to the building exit' } : {}),
           }
@@ -158,7 +160,7 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
     if (!(FEATURE_KINDS as readonly string[]).includes(kind)) throw new ToolError(`kind must be one of: ${FEATURE_KINDS.join(', ')}.`);
     const limit = Math.max(1, Math.min(5, Math.round(num(args.limit) ?? 3)));
     const found = nearestFeatures(pack, pos, kind as FeatureKind, limit).filter((f) => f.dist <= 600);
-    if (!found.length) return { results: [], note: `No ${FEATURE_NAMES[kind]} is mapped within 600 meters.` };
+    if (!found.length) return { results: [], note: `No ${FEATURE_NAMES[kind]} is mapped within ${distancePhrase(600)}.` };
     return {
       results: found.map(({ feature }) => ({
         place_id: `f:${feature.id}`,
@@ -230,7 +232,7 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
     const reports = await reportsApi.near(ll.lon, ll.lat, radius);
     if (radius <= 60) useStore.setState({ reports });
     return {
-      radius_m: radius,
+      radius: distancePhrase(radius),
       reports: reports.map((r) => ({
         report_id: r.id,
         place_id: `r:${r.id}`,
@@ -273,9 +275,9 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
       .map((b) => ({ b, near: projectOnRing(pos, b.outer).point }))
       // A wide building counts when either its nearest wall or its center is in view.
       .filter(({ b, near }) => inView(near) || inView(b.centroid))
-      .map(({ b, near }) => ({ name: b.name ?? 'unnamed building', ...whereIs(pos, near) }))
-      .sort((a, b) => a.distance_m - b.distance_m)
-      .slice(0, 6);
+      .sort((a, b) => dist(pos, a.near) - dist(pos, b.near))
+      .slice(0, 6)
+      .map(({ b, near }) => ({ name: b.name ?? 'unnamed building', ...whereIs(pos, near) }));
 
     const features = featuresWithin(pack, pos, XRAY_RANGE_M)
       .filter(({ feature }) => feature.kind !== 'tree' && inView(feature.pos))

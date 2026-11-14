@@ -20,9 +20,10 @@ function speakLocally(text: string): void {
 
 /** @param agentOnly extra context for the model (ids and the like) that is neither shown nor spoken. */
 export function announce(text: string, kind: AnnouncementKind = 'Navigation update', agentOnly = ''): void {
-  useStore.getState().pushCaption('app', text, true);
   const sent = live.sendText(`${kind}: ${text} Say this to the user briefly.${agentOnly ? ` ${agentOnly}` : ''}`);
-  if (!sent) speakLocally(text);
+  if (sent) return; // the guide says it, and its words appear as the caption
+  useStore.getState().pushCaption('app', text, true);
+  speakLocally(text);
 }
 
 /** Context for the model that should not be spoken. */

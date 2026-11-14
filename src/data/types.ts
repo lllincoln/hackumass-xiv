@@ -32,7 +32,13 @@ export type PackFeature = {
   lat: number;
   name?: string;
   /** Position projected beside the nearest sidewalk/footway/path. */
-  snapped?: { lon: number; lat: number; wayId: string };
+  snapped?: {
+    lon: number;
+    lat: number;
+    wayId: string;
+    /** Direction from the object toward its path, radians counter-clockwise from east. */
+    facing?: number;
+  };
   /** For entrances: the building whose wall the door is on. */
   buildingId?: string;
 };

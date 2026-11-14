@@ -4,8 +4,8 @@ import { startFrames, stopFrames } from '../gemini/video';
 import { media } from '../sensors/media';
 import { useStore } from '../store';
 
-/** Full-screen camera feed. While mounted, it sends about one frame a second to the guide. */
-export function CameraView() {
+/** Full-screen camera feed. While `active`, it sends about one frame a second to the guide. */
+export function CameraView({ active }: { active: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraError = useStore((s) => s.cameraError);
   const [stream, setStream] = useState<MediaStream | null>(media.camera);
@@ -25,9 +25,16 @@ export function CameraView() {
     video.srcObject = stream;
     if (!stream) return;
     void video.play().catch(() => undefined);
+  }, [stream]);
+
+  // In x-ray mode the guide gets no frames (it is told the camera is off), but the stream stays warm
+  // so switching back is instant.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream || !active) return;
     startFrames(video, (jpeg) => live.sendVideo(jpeg));
     return () => stopFrames();
-  }, [stream]);
+  }, [stream, active]);
 
   return (
     <div className="camera">

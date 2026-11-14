@@ -41,6 +41,23 @@ export function buildingEdgePoints(b: BuildingX, out: P3[] = []): P3[] {
   return out;
 }
 
+const STOREY_M = 3.2;
+const MAX_FLOOR_LINES = 10;
+
+/** Horizontal outlines at each storey, as line-segment pairs: makes a building's height and scale readable. */
+export function floorLinePoints(b: BuildingX, out: P3[] = []): P3[] {
+  const storeys = Math.floor((b.heightM - 0.5) / STOREY_M);
+  if (storeys < 1) return out;
+  // Towers would turn into a solid block of lines: draw every 2nd or 3rd storey instead.
+  const every = Math.ceil(storeys / MAX_FLOOR_LINES);
+  for (let k = every; k <= storeys; k += every) {
+    const h = k * STOREY_M;
+    const ring = b.outer;
+    for (let i = 0; i < ring.length; i++) out.push(toScene(ring[i], h), toScene(ring[(i + 1) % ring.length], h));
+  }
+  return out;
+}
+
 /** A closed loop (first point repeated) just above the floor, for the containing building's floor outline. */
 export function floorOutline(ring: readonly Vec2[], height = 0.05): P3[] {
   const pts = ring.map((p) => toScene(p, height));
@@ -76,6 +93,7 @@ const WAY_STYLE: Record<WayKind, { width: number; lift: number; color: [number, 
   crossing: { width: 2.2, lift: 0.05, color: [0.9, 0.92, 0.95] },
 };
 const STRIPE_M = 0.6;
+const TREAD_M = 0.32;
 
 /** Walkable ways as flat ribbons with vertex colors: roads darker, crossings striped. */
 export function waysGeometry(ways: readonly WayX[]): THREE.BufferGeometry {
@@ -103,10 +121,11 @@ export function waysGeometry(ways: readonly WayX[]): THREE.BufferGeometry {
       const dy = (b.y - a.y) / len;
       const nx = -dy;
       const ny = dx;
-      if (w.kind === 'crossing') {
-        // zebra: alternate painted and bare stripes along the crossing
-        for (let s = 0; s < len; s += STRIPE_M * 2) {
-          const e = Math.min(len, s + STRIPE_M);
+      if (w.kind === 'crossing' || w.kind === 'steps') {
+        // zebra crossing, or stair treads: alternate painted and bare stripes along the way
+        const stripe = w.kind === 'steps' ? TREAD_M : STRIPE_M;
+        for (let s = 0; s < len; s += stripe * 2) {
+          const e = Math.min(len, s + stripe);
           quad({ x: a.x + dx * s, y: a.y + dy * s }, { x: a.x + dx * e, y: a.y + dy * e }, nx, ny, style.width / 2, style.lift, style.color);
         }
       } else {

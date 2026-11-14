@@ -1,6 +1,7 @@
 // OSRM returns maneuver types, not sentences. osrm-text-instructions turns them into English.
 
 import osrmTextInstructions from 'osrm-text-instructions';
+import { distancePhrase } from '../units';
 import type { OsrmStep } from './osrm';
 
 let compiler: ReturnType<typeof osrmTextInstructions> | null = null;
@@ -27,10 +28,7 @@ export function instructionFor(step: OsrmStep): string {
   return fallback(step);
 }
 
+/** A distance in meters, spoken in the user's unit ("80 feet" or "25 meters"). */
 export function metersPhrase(m: number): string {
-  if (m < 1.5) return '1 meter';
-  if (m < 15) return `${Math.round(m)} meters`;
-  if (m < 100) return `${Math.round(m / 5) * 5} meters`;
-  if (m < 1000) return `${Math.round(m / 10) * 10} meters`;
-  return `${(m / 1000).toFixed(1)} kilometers`;
+  return distancePhrase(m);
 }

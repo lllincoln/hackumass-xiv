@@ -35,13 +35,13 @@ export type StartResult =
   | {
       ok: true;
       mode: 'route';
-      total_distance_m: number;
+      total_distance: string;
       duration_min: number;
       first_steps: string[];
       exit_first?: string;
       notes?: string[];
     }
-  | { ok: true; mode: 'bearing_only'; distance_m: number; direction: string; note: string }
+  | { ok: true; mode: 'bearing_only'; distance: string; direction: string; note: string }
   | { ok: false; error: string };
 
 let saidFar = new Set<number>();
@@ -163,7 +163,7 @@ export async function startNavigation(dest: Destination): Promise<StartResult> {
     return {
       ok: true,
       mode: 'bearing_only',
-      distance_m: res.ok ? res.distance_m : 0,
+      distance: res.ok ? res.distance : '',
       direction: res.ok ? res.direction : '',
       note: 'Directions are unavailable right now. Bearing-only guidance is on: the ticking sound points straight at the destination.',
     };
@@ -199,7 +199,7 @@ export async function startNavigation(dest: Destination): Promise<StartResult> {
   return {
     ok: true,
     mode: 'route',
-    total_distance_m: Math.round(route.totalM),
+    total_distance: metersPhrase(route.totalM),
     duration_min: Math.max(1, Math.round(route.durationS / 60)),
     first_steps: route.steps.slice(0, 5).map((s) => s.text),
     ...(entrance && !entrance.reached
@@ -209,7 +209,7 @@ export async function startNavigation(dest: Destination): Promise<StartResult> {
   };
 }
 
-export function pointTo(dest: Destination): { ok: true; distance_m: number; direction: string } | { ok: false; error: string } {
+export function pointTo(dest: Destination): { ok: true; distance: string; direction: string } | { ok: false; error: string } {
   const { pack, pos } = useStore.getState();
   if (!pack) return { ok: false, error: 'Map data is not loaded yet.' };
   if (!pos) return { ok: false, error: 'Position is not known yet.' };
@@ -228,7 +228,7 @@ export function pointTo(dest: Destination): { ok: true; distance_m: number; dire
     targetBearing: bearingENU(pos, target),
     reportIds: [],
   });
-  return { ok: true, distance_m: Math.round(dist(pos, target)), direction: relativeClock(pos, target) };
+  return { ok: true, distance: metersPhrase(dist(pos, target)), direction: relativeClock(pos, target) };
 }
 
 export function stopNavigation(): boolean {

@@ -12,7 +12,10 @@ import type { FeatureKind } from '../data/types';
 import { angleDiff, bearingENU, dist, type Vec2 } from '../geo';
 import { orientation } from '../sensors/orientation';
 import { useStore } from '../store';
-import { buildingEdgePoints, EYE_HEIGHT_M, floorOutline, routeTube, toScene, wallsGeometry, waysGeometry, type P3 } from './geometry';
+import { distanceShort } from '../units';
+import { BACKGROUND, CompassRing, GroundGrid, HAZE, RouteArrows, SkyDome } from './extras';
+import { buildingEdgePoints, EYE_HEIGHT_M, floorLinePoints, floorOutline, routeTube, toScene, wallsGeometry, waysGeometry, type P3 } from './geometry';
+import { advanceGlide, shown } from './glide';
 import { labelTexture } from './labels';
 
 const RAD = Math.PI / 180;
@@ -23,7 +26,8 @@ const WHITE = '#ffffff';
 /** Where to go: route, target, distance. */
 const ACCENT = '#ffc53d';
 const OK = '#5ee6a8';
-const BACKGROUND = '#05060a';
+/** Storey lines are only drawn this close: further away they would just be noise. */
+const FLOOR_LINE_RANGE_M = 130;
 const BUILDING_RANGE_M = 250;
 const FEATURE_RANGE_M = 80;
 const FEATURE_LABEL_RANGE_M = 40;
@@ -59,16 +63,9 @@ function CameraRig() {
   const perf = useRef({ frames: 0, time: 0, slowWindows: 0 });
 
   useFrame((_, dt) => {
-    const { pos } = useStore.getState();
-    if (pos) {
-      scratch.target.set(pos.x, EYE_HEIGHT_M, -pos.y);
-      if (!placed.current) {
-        camera.position.copy(scratch.target);
-        placed.current = true;
-      } else {
-        camera.position.lerp(scratch.target, 1 - Math.exp(-dt * 8));
-      }
-    }
+    // Follow the glided position (see glide.ts), not the raw estimate, so walking looks continuous.
+    advanceGlide(dt);
+    if (shown.ready) camera.position.set(shown.x, EYE_HEIGHT_M, -shown.y);
 
     // Standard deviceorientation → camera quaternion. Without a sensor, look level along the known heading.
     const o = orientation;
@@ -116,7 +113,7 @@ function Label({
   const h = size * (large ? 1.6 : 1);
   return (
     <sprite position={position} scale={[h * aspect, h, 1]} renderOrder={10}>
-      <spriteMaterial map={texture} sizeAttenuation={false} depthTest={false} depthWrite={false} transparent />
+      <spriteMaterial map={texture} sizeAttenuation={false} depthTest={false} depthWrite={false} transparent fog={false} />
     </sprite>
   );
 }
@@ -143,6 +140,13 @@ function Buildings() {
     return pts;
   }, [others]);
   const walls = useDisposable(useMemo(() => wallsGeometry(others), [others]));
+  const storeys = useMemo(() => {
+    const pos = useStore.getState().pos;
+    const pts: P3[] = [];
+    if (!pos) return pts;
+    for (const b of others) if (dist(pos, b.centroid) - Math.sqrt(b.area) / 2 < FLOOR_LINE_RANGE_M) floorLinePoints(b, pts);
+    return pts;
+  }, [others]);
 
   const containing = buildingId ? pack?.buildingById.get(buildingId) : undefined;
   const containingEdges = useMemo(() => (containing ? buildingEdgePoints(containing) : []), [containing]);
@@ -150,9 +154,10 @@ function Buildings() {
 
   return (
     <>
-      {edges.length > 0 && <Line points={edges} segments color={LINE} lineWidth={large ? 3 : 2} transparent opacity={0.85} />}
+      {edges.length > 0 && <Line points={edges} segments color={LINE} lineWidth={large ? 3 : 2} transparent opacity={0.9} fog />}
+      {storeys.length > 0 && <Line points={storeys} segments color={LINE} lineWidth={1} transparent opacity={0.3} fog />}
       <mesh geometry={walls}>
-        <meshBasicMaterial color={LINE} transparent opacity={0.055} depthWrite={false} side={THREE.FrontSide} />
+        <meshBasicMaterial color={LINE} transparent opacity={0.07} depthWrite={false} side={THREE.FrontSide} />
       </mesh>
       {/* The building the user is in: brighter edges plus its floor outline. */}
       {containingEdges.length > 0 && <Line points={containingEdges} segments color={WHITE} lineWidth={large ? 5 : 3.5} />}
@@ -237,7 +242,10 @@ const FEATURE_COLORS: Record<FeatureKind, string> = {
 
 // Shared primitives, created once.
 const GEO = {
-  bench: new THREE.BoxGeometry(1.6, 0.45, 0.5),
+  bench: new THREE.BoxGeometry(1.6, 0.08, 0.5),
+  benchBack: new THREE.BoxGeometry(1.6, 0.5, 0.07),
+  benchLeg: new THREE.BoxGeometry(0.08, 0.36, 0.45),
+  doorPanel: new THREE.PlaneGeometry(1.08, 2.1),
   trash: new THREE.CylinderGeometry(0.3, 0.26, 0.9, 10),
   bike: new THREE.TorusGeometry(0.45, 0.05, 6, 14, Math.PI),
   post: new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6),
@@ -264,13 +272,22 @@ function mat(color: string): THREE.MeshBasicMaterial {
 function FeatureMesh({ f }: { f: FeatureX }) {
   const m = mat(FEATURE_COLORS[f.kind]);
   const p = toScene(f.pos);
+  // Turn the object so its front (+z) faces the path it stands beside; benches then sit parallel to the path.
+  const turn = f.facing === undefined ? 0 : Math.atan2(Math.cos(f.facing), -Math.sin(f.facing));
   switch (f.kind) {
     case 'bench':
-      return <mesh geometry={GEO.bench} material={m} position={[p[0], 0.225, p[2]]} />;
+      return (
+        <group position={p} rotation={[0, turn, 0]}>
+          <mesh geometry={GEO.bench} material={m} position={[0, 0.4, 0]} />
+          <mesh geometry={GEO.benchBack} material={m} position={[0, 0.72, -0.22]} />
+          <mesh geometry={GEO.benchLeg} material={m} position={[-0.65, 0.18, 0]} />
+          <mesh geometry={GEO.benchLeg} material={m} position={[0.65, 0.18, 0]} />
+        </group>
+      );
     case 'trash':
       return <mesh geometry={GEO.trash} material={m} position={[p[0], 0.45, p[2]]} />;
     case 'bike_parking':
-      return <mesh geometry={GEO.bike} material={m} position={[p[0], 0.02, p[2]]} />;
+      return <mesh geometry={GEO.bike} material={m} position={[p[0], 0.02, p[2]]} rotation={[0, turn, 0]} />;
     case 'bus_stop':
       return (
         <group position={p}>
@@ -285,6 +302,9 @@ function FeatureMesh({ f }: { f: FeatureX }) {
           <mesh geometry={GEO.doorPost} material={m} position={[-0.6, 1.1, 0]} />
           <mesh geometry={GEO.doorPost} material={m} position={[0.6, 1.1, 0]} />
           <mesh geometry={GEO.doorTop} material={m} position={[0, 2.2, 0]} />
+          <mesh geometry={GEO.doorPanel} position={[0, 1.05, 0]}>
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.22} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
         </group>
       );
     case 'water':
@@ -292,7 +312,7 @@ function FeatureMesh({ f }: { f: FeatureX }) {
     case 'toilets':
       return <mesh geometry={GEO.box} material={m} position={[p[0], 0.45, p[2]]} />;
     case 'picnic_table':
-      return <mesh geometry={GEO.table} material={m} position={[p[0], 0.375, p[2]]} />;
+      return <mesh geometry={GEO.table} material={m} position={[p[0], 0.375, p[2]]} rotation={[0, turn, 0]} />;
     case 'tree':
       return <mesh geometry={GEO.tree} material={m} position={[p[0], 2.5, p[2]]} />;
   }
@@ -374,13 +394,14 @@ function Reports() {
 function Beam({ at, color, radius, height, opacity }: { at: Vec2; color: string; radius: number; height: number; opacity: number }) {
   return (
     <mesh geometry={GEO.beam} position={[at.x, height / 2, -at.y]} scale={[radius / 0.5, height, radius / 0.5]}>
-      <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} side={THREE.DoubleSide} />
+      <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} side={THREE.DoubleSide} fog={false} />
     </mesh>
   );
 }
 
 function RouteLayer() {
   const nav = useStore((s) => s.nav);
+  const metric = useStore((s) => s.settings.metric);
   const route = nav?.route ?? null;
   const core = useDisposable(useMemo(() => (route ? routeTube(route.line, 0.18) : null), [route]));
   const glow = useDisposable(useMemo(() => (route ? routeTube(route.line, 0.5) : null), [route]));
@@ -401,9 +422,10 @@ function RouteLayer() {
           <meshBasicMaterial color={ACCENT} transparent opacity={0.18} depthWrite={false} />
         </mesh>
       )}
+      <RouteArrows />
       {/* Beacon at the target, with its distance. */}
       <Beam at={nav.dest} color={ACCENT} radius={0.6} height={90} opacity={0.4} />
-      <Label text={`${nav.label} · ${nav.remainingM} m`} position={toScene(nav.dest, 6)} color={ACCENT} size={0.055} emphasis />
+      <Label text={`${nav.label} · ${distanceShort(nav.remainingM, metric)}`} position={toScene(nav.dest, 6)} color={ACCENT} size={0.055} emphasis />
       {nextStep && <Beam at={nextStep.pos} color="#ffffff" radius={0.25} height={30} opacity={0.35} />}
       {exit && (
         <>
@@ -427,8 +449,7 @@ function SigmaRing() {
     }, [sigma]),
   );
   useFrame(() => {
-    const pos = useStore.getState().pos;
-    if (pos && ref.current) ref.current.position.set(pos.x, 0.08, -pos.y);
+    if (shown.ready && ref.current) ref.current.position.set(shown.x, 0.08, -shown.y);
   });
   return (
     <mesh ref={ref} geometry={geometry} rotation={[-Math.PI / 2, 0, 0]}>
@@ -439,31 +460,37 @@ function SigmaRing() {
 
 // ---------------------------------------------------------------------------------------------- view
 
-export default function XRayView() {
+/** @param active false while the camera view is showing: the scene stays built but stops redrawing every frame. */
+export default function XRayView({ active }: { active: boolean }) {
   const simplify = useStore((s) => s.settings.simplify);
   const hasPos = useStore((s) => s.pos !== null);
   return (
     <div className="xray" role="img" aria-label="X-ray view: wireframe of nearby buildings, paths and your route">
       <Canvas
+        frameloop={active ? 'always' : 'demand'}
         camera={{ fov: 70, near: 0.3, far: 700, position: [0, EYE_HEIGHT_M, 0] }}
         dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         onCreated={({ gl }) => gl.setClearColor(BACKGROUND)}
       >
+        <fog attach="fog" args={[HAZE, 60, 300]} />
+        <SkyDome />
         <CameraRig />
         <Buildings />
         <RouteLayer />
         <SigmaRing />
+        <CompassRing />
         <Reports />
         {!simplify && (
           <>
+            <GroundGrid />
             <Ground />
             <Features />
             <BuildingLabels />
           </>
         )}
       </Canvas>
-      {!hasPos && <p className="xray-wait">Waiting for a location fix…</p>}
+      {active && !hasPos && <p className="xray-wait">Waiting for a location fix…</p>}
     </div>
   );
 }

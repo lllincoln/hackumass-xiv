@@ -4,9 +4,25 @@ Last updated: Sat Nov 14 2026, ~10:00. Deadline: submission Sun 10:00, judging S
 
 ## State
 
-All code for M0–M8 is written. It typechecks, 26 unit tests pass, the production build works, and the whole flow runs end to end in the simulator (`/?sim=1`) in headless Chromium. Nothing has been run on a real phone, against the real Gemini Live API, or against Atlas yet: there is no `.env` with keys on this machine.
+All code for M0–M8 is written. It typechecks, 26 unit tests pass, the production build works, and the whole flow runs end to end in the simulator (`/?sim=1`) in headless Chromium, including a real Gemini Live session (voice out, captions, app announcements). Not yet run: Atlas, a real phone, the Vultr deploy.
 
 Nothing is committed yet.
+
+### Sat ~11:00 update
+
+- **UI redesign:** dark frosted-glass panels, one amber accent, rounded dock (settings · view switch · mic), settings sheet with switches, "High contrast" mode (also follows the OS `prefers-contrast` / `prefers-reduced-transparency`). X-ray scene and minimap use the same calmer palette.
+- **Instant view switch:** camera and x-ray are both mounted from the start; switching is a circular reveal from the button. The camera stream now stays open in x-ray mode (frames stop being sent to the guide) so switching back is instant. This differs from SPEC §9 "stop the camera".
+- **Minimap:** animated expand/shrink, per-frame eased rotation and follow, pauses while panned, recenters after 4 s idle, on "Recenter", or on close.
+- **Pack:** now downloads from the main OSM API (about 3 s; cached rebuilds 0.3 s) with Overpass as fallback. Multipolygon buildings (Du Bois Library etc.) are in; alias table fully matches.
+- **Gemini:** connects with API version `v1beta`. The SDK logs a warning that it expects `v1alpha`; it works as is. If token minting ever fails, try `LIVE_API_VERSION = 'v1alpha'` in `shared/agent.ts`.
+
+### Sat afternoon update
+
+- **X-ray detail:** horizon glow, distance haze, ground grid, storey lines, stair treads, compass ring, flat chevrons flowing along the route, benches with backrests, lit door panels. The viewpoint, accuracy ring and compass glide between position updates (`src/xray/glide.ts`).
+- **Snapping:** benches, bins, racks and tables stand 1.6 m from the path centre line, square to it and facing it (`snapped.facing` in the pack). Indoor features and plaza outlines are no longer snapped. SPEC §4 says 1.2 m; 1.6 m keeps the models off the path ribbon.
+- **Units:** feet and miles by default, "Metric units" switch in Settings. Tools return distances as phrases in the user's unit (`distance: "110 feet"`), so the guide repeats them without converting. See `src/units.ts`.
+- **Hold-to-talk:** starts only after a 280 ms stationary press on the background; taps, drags, buttons and the map never trigger it. The mic button is a hold button in that mode.
+- **Status panel:** guide state is shown only when there is a problem (reconnecting / unavailable).
 
 ## Verified
 
@@ -29,7 +45,6 @@ Nothing is committed yet.
 
 ## Known gaps
 
-- **Campus pack is missing multipolygon buildings** (for example the Du Bois Library, so "the library" finds nothing). The first Overpass fetch dropped them; the parser is fixed, but every Overpass mirror has timed out since. Rerun `npm run pack -- --refresh` and check the printed alias table (the "Du Bois" line should match, and "Campus Center" should map to Murray D. Lincoln Campus Center). Commit the new `public/data/campus.json`.
 - Seed report coordinates in `scripts/seed-atlas.ts` are estimates around the ILC. Check them on the minimap after seeding.
 - OSRM routes through the Campus Center concourse; the building constraint can hold the estimate inside until the next good GPS fix. Fine outdoors, worth a look on the demo route.
 - Stretch (Atlas Vector Search) is not built.

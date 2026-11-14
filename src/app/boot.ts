@@ -15,6 +15,7 @@ import { startHeading } from '../sensors/heading';
 import { startMotion } from '../sensors/motion';
 import { sim } from '../sensors/sim';
 import { useStore } from '../store';
+import { unitName } from '../units';
 
 let booted = false;
 
@@ -48,6 +49,11 @@ export function boot(pack: PackIndex): void {
   live.onLive = () => {
     // A new or resumed session does not know the view changed while it was away.
     if (useStore.getState().mode === 'xray') noteToAgent('Camera is off; user is in x-ray mode; rely on map data.');
+    noteToAgent(`The user wants distances in ${unitName()}.`);
   };
   live.connect();
+  // Tell the guide when the unit setting changes mid-conversation.
+  useStore.subscribe((s, prev) => {
+    if (s.settings.metric !== prev.settings.metric) noteToAgent(`The user now wants distances in ${unitName()}.`);
+  });
 }

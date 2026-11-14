@@ -293,6 +293,32 @@ select:focus-visible {
   pointer-events: none;
 }
 
+.layer {
+  position: absolute;
+  inset: 0;
+}
+
+/* View switch: the x-ray scene opens in a circle growing out of the switch button; the camera sinks back. */
+.layer-camera {
+  transition: transform 0.6s cubic-bezier(0.65, 0, 0.2, 1), filter 0.6s ease;
+}
+
+.stage[data-mode='xray'] .layer-camera {
+  transform: scale(1.08);
+  filter: blur(10px) brightness(0.5);
+}
+
+.layer-xray {
+  --origin: 50% calc(100% - var(--safe-bottom) - 58px);
+  clip-path: circle(0% at var(--origin));
+  transition: clip-path 0.6s cubic-bezier(0.65, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.stage[data-mode='xray'] .layer-xray {
+  clip-path: circle(150% at var(--origin));
+}
+
 .camera,
 .xray {
   position: absolute;
@@ -435,18 +461,14 @@ select:focus-visible {
   background: var(--warn);
 }
 
-.status-dot[data-state='live'] {
-  background: var(--ok);
-}
-
-.status-dot[data-state='speaking'] {
-  background: var(--info);
-  box-shadow: 0 0 0 4px rgba(143, 200, 255, 0.3);
+.status .status-problem {
+  color: var(--warn);
+  font-weight: 600;
 }
 
 .status .status-target {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-top: 8px;
   padding-top: 8px;
@@ -459,6 +481,7 @@ select:focus-visible {
   flex: none;
   width: 18px;
   height: 18px;
+  margin-top: 0.15em;
 }
 
 /* ------------------------------------------------------------------ Minimap */
@@ -468,25 +491,35 @@ select:focus-visible {
   z-index: 20;
   top: calc(var(--safe-top) + 12px);
   right: 12px;
-  width: 30vw;
-  min-width: 112px;
-  max-width: 250px;
-  aspect-ratio: 1;
+  /* Explicit width and height (not aspect-ratio) so the grow-to-full-screen transition can interpolate. */
+  --size: clamp(112px, 30vw, 250px);
+  width: var(--size);
+  height: var(--size);
   border: var(--stroke-width) solid var(--stroke);
   border-radius: 26px;
   overflow: hidden;
   background: #0b0d12;
   box-shadow: var(--shadow);
+  transition:
+    top 0.42s cubic-bezier(0.3, 0.9, 0.25, 1),
+    right 0.42s cubic-bezier(0.3, 0.9, 0.25, 1),
+    width 0.42s cubic-bezier(0.3, 0.9, 0.25, 1),
+    height 0.42s cubic-bezier(0.3, 0.9, 0.25, 1),
+    border-radius 0.42s ease;
+}
+
+.minimap:active:not(.minimap-expanded) {
+  transform: scale(0.96);
 }
 
 .minimap-expanded {
   z-index: 40;
-  inset: 0;
-  width: auto;
-  max-width: none;
-  aspect-ratio: auto;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
   border-radius: 0;
-  border: 0;
+  border-color: transparent;
 }
 
 .minimap-canvas {
@@ -551,6 +584,31 @@ select:focus-visible {
   font-size: 1.15rem;
   font-weight: 700;
   box-shadow: var(--shadow);
+}
+
+.minimap-close,
+.minimap-recenter,
+.minimap-hint {
+  animation: fade-up 0.3s 0.2s ease both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.minimap-recenter {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 28px);
+  margin-left: -80px;
+  width: 160px;
+  min-height: 56px;
+  border-radius: 999px;
+  font-size: 1.1rem;
+  font-weight: 650;
 }
 
 .minimap-hint {
@@ -758,7 +816,7 @@ select:focus-visible {
   position: absolute;
   z-index: 50;
   left: 12px;
-  top: calc(var(--safe-top) + 150px);
+  top: calc(var(--safe-top) + 230px);
 }
 
 .sim-open {
@@ -771,7 +829,7 @@ select:focus-visible {
 
 .sim {
   width: min(372px, calc(100vw - 24px));
-  max-height: calc(100vh - 420px);
+  max-height: calc(100vh - 480px);
   overflow-y: auto;
   padding: 12px 14px;
   border-radius: var(--radius);

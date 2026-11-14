@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { projectOnRing, projectOnSegment, ringArea, ringCentroid, toENU, fromENU, type Vec2 } from '../src/geo/index';
+import { pointInRing, projectOnRing, projectOnSegment, ringArea, ringCentroid, toENU, fromENU, type Vec2 } from '../src/geo/index';
 import type { CampusPack, FeatureKind, GazetteerEntry, LL, PackBuilding, PackFeature, PackWay, WayKind } from '../src/data/types';
 
 // UMass Amherst campus plus a margin (south, west, north, east).
@@ -28,7 +28,8 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 const SNAP_MAX_M = 12;
-const SNAP_OFFSET_M = 1.2;
+/** Distance from the path's centre line: half a path's width plus room for the object itself. */
+const SNAP_OFFSET_M = 1.6;
 const MAX_TREES = 400;
 const LEVEL_M = 3.2;
 const DEFAULT_HEIGHT_M = 8;
@@ -359,6 +360,7 @@ async function main() {
   const ways: PackWay[] = [];
   const features: PackFeature[] = [];
   const trees: PackFeature[] = [];
+  const plazaIds = new Set<string>();
 
   for (const el of elements) {
     const tags = el.tags ?? {};
@@ -378,7 +380,11 @@ async function main() {
         });
       } else {
         const kind = wayKind(tags);
-        if (kind && coords.length >= 2) ways.push({ id: `w${el.id}`, kind, coords });
+        if (kind && coords.length >= 2) {
+          ways.push({ id: `w${el.id}`, kind, coords });
+          // Plazas are mapped as closed "area" ways: their outline is not a path to line benches up along.
+          if (tags.area === 'yes') plazaIds.add(`w${el.id}`);
+        }
       }
     } else if (el.type === 'relation') {
       if (!tags.building || tags.building === 'no' || !el.members) continue;
@@ -446,6 +452,7 @@ async function main() {
   const segs: Seg[] = [];
   for (const w of ways) {
     if (w.kind !== 'sidewalk' && w.kind !== 'footway' && w.kind !== 'path') continue;
+    if (plazaIds.has(w.id)) continue;
     const pts = w.coords.map(enu);
     for (let i = 0; i < pts.length - 1; i++) segs.push({ a: pts[i], b: pts[i + 1], wayId: w.id });
   }
@@ -453,12 +460,29 @@ async function main() {
   for (const f of features) {
     if (f.kind === 'entrance' || f.kind === 'tree') continue;
     const p = enu([f.lon, f.lat]);
+    // Things inside a building (lobby benches, indoor bins) stay where they are: pulling them to an outdoor path is wrong.
+    if (outlines.some((o) => p.x >= o.minX && p.x <= o.maxX && p.y >= o.minY && p.y <= o.maxY && pointInRing(p, o.ring))) continue;
     const hit = nearestSeg(p, segs, SNAP_MAX_M);
-    if (!hit || hit.dist < 0.3) continue; // nothing near, or already on the way
-    const ux = (p.x - hit.point.x) / hit.dist;
-    const uy = (p.y - hit.point.y) / hit.dist;
-    const s = fromENU(ORIGIN, hit.point.x + ux * SNAP_OFFSET_M, hit.point.y + uy * SNAP_OFFSET_M);
-    f.snapped = { lon: r6(s.lon), lat: r6(s.lat), wayId: hit.seg.wayId };
+    if (!hit) continue;
+    // Stand the object square to the path: straight out from the centre line, on the side it was mapped on.
+    // (Mapped exactly on the line, or beyond the end of a segment: use the segment's left-hand normal.)
+    const sx = hit.seg.b.x - hit.seg.a.x;
+    const sy = hit.seg.b.y - hit.seg.a.y;
+    const sl = Math.hypot(sx, sy) || 1;
+    let nx = -sy / sl;
+    let ny = sx / sl;
+    if ((p.x - hit.point.x) * nx + (p.y - hit.point.y) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const s = fromENU(ORIGIN, hit.point.x + nx * SNAP_OFFSET_M, hit.point.y + ny * SNAP_OFFSET_M);
+    f.snapped = {
+      lon: r6(s.lon),
+      lat: r6(s.lat),
+      wayId: hit.seg.wayId,
+      // direction from the object back toward the path, radians counter-clockwise from east
+      facing: Math.round(Math.atan2(-ny, -nx) * 1000) / 1000,
+    };
     snapped++;
   }
 

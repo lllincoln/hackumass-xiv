@@ -53,10 +53,12 @@ export type Settings = {
   handsFree: boolean;
   iosHaptic: boolean;
   highContrast: boolean;
+  /** Distances in meters instead of feet. */
+  metric: boolean;
 };
 
 const SETTINGS_KEY = 'wayfinder.settings';
-const defaultSettings: Settings = { captions: true, largeText: false, simplify: false, handsFree: true, iosHaptic: false, highContrast: false };
+const defaultSettings: Settings = { captions: true, largeText: false, simplify: false, handsFree: true, iosHaptic: false, highContrast: false, metric: false };
 
 function loadSettings(): Settings {
   try {
