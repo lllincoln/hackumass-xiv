@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [react(), ...(https ? [basicSsl()] : [])],
   server: {
     port: 5173,
+    allowedHosts: true,
     proxy: { '/api': 'http://localhost:8787' },
   },
   preview: {
@@ -23,3 +24,4 @@ export default defineConfig({
     environment: 'node',
   },
 });
+
