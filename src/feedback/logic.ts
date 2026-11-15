@@ -1,8 +1,9 @@
 // Pure mapping from heading error to feedback parameters (kept separate so it can be unit-tested).
 
-export const DEADBAND_DEG = 8;
+/** Silent within this many degrees of the target: on course. */
+export const DEADBAND_DEG = 20;
 /** Leave the deadband only past this, so the chime does not chatter at the edge. */
-export const DEADBAND_EXIT_DEG = 10;
+export const DEADBAND_EXIT_DEG = 24;
 export const MIN_RATE_HZ = 2;
 export const MAX_RATE_HZ = 8;
 /** Feedback is at full intensity from this error on (facing sideways is already as wrong as it gets). */

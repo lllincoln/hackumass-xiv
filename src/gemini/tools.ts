@@ -9,7 +9,7 @@ import { searchPlaces } from '../data/gazetteer';
 import { elevationAt } from '../data/terrain';
 import { buildingsAlongRay, buildingsWithin, featuresWithin, nearestFeatures, toLocal, toLonLat, type BuildingX, type PackIndex } from '../data/pack';
 import type { FeatureKind } from '../data/types';
-import { angleDiff, bearingENU, clockPhrase, compassWord, dist, norm360, projectOnRing, ringGap, type LonLat, type Vec2 } from '../geo';
+import { angleDiff, bearingENU, dist, norm360, projectOnRing, relativeWords, ringGap, type LonLat, type Vec2 } from '../geo';
 import { pointTo, startNavigation, stopNavigation, type Destination } from '../nav/navigator';
 import { reportsApi } from '../reports/api';
 import { markOwnReport, removeReport, upsertReport } from '../reports/watcher';
@@ -50,13 +50,14 @@ function need(): { pack: PackIndex; pos: Vec2 } {
   return { pack, pos };
 }
 
-/** Distance plus direction (clock face relative to the phone, and compass) from the user to a point. */
-function whereIs(pos: Vec2, target: Vec2): { distance: string; clock?: string; compass: string } {
-  const b = bearingENU(pos, target);
+/**
+ * Distance plus direction from the user to a point, relative to where the phone points ("straight ahead",
+ * "ahead, on your left", "behind you"). Never compass words: the user cannot use "southeast".
+ */
+function whereIs(pos: Vec2, target: Vec2): { distance: string; direction: string } {
   return {
     distance: distancePhrase(dist(pos, target)),
-    ...(orientation.has ? { clock: clockPhrase(angleDiff(orientation.heading, b)) } : {}),
-    compass: compassWord(b),
+    direction: orientation.has ? relativeWords(angleDiff(orientation.heading, bearingENU(pos, target))) : 'unknown until the compass settles',
   };
 }
 
@@ -172,7 +173,7 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
       ...(s.pos && elevationAt(s.pos) !== null ? { elevation: `${distancePhrase(elevationAt(s.pos)!)} above sea level` } : {}),
       ...(s.pos && orientation.has ? (slopeAhead(s.pos, orientation.heading) ?? {}) : {}),
       ...(building ? { building: building.name ?? 'an unnamed building' } : {}),
-      ...(orientation.has ? { facing: compassWord(orientation.heading), heading_deg: Math.round(orientation.heading) } : { facing: 'unknown' }),
+      compass_ready: orientation.has,
       view: s.mode,
       navigation: s.nav
         ? {
@@ -339,7 +340,7 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
     const range = Math.max(50, Math.min(LINE_MAX_M, num(args.range_m) ?? LINE_RANGE_M));
     const buildings = lineOfSight(pack, pos, b, range);
     return {
-      direction: compassWord(b),
+      ...(orientation.has ? { direction: relativeWords(angleDiff(orientation.heading, b)) } : {}),
       range: distancePhrase(range),
       buildings,
       note: buildings.length
@@ -368,14 +369,13 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
       .map((b) => {
         const near = projectOnRing(centerPos, b.outer);
         const gap = centerBuilding ? ringGap(centerBuilding.outer, b.outer) : near.dist;
-        return { b, gap, dir: bearingENU(centerPos, b.centroid) };
+        return { b, gap };
       })
       .filter((r) => r.gap <= radius)
       .sort((a, b) => a.gap - b.gap)
       .slice(0, limit)
-      .map(({ b, gap, dir }) => ({
+      .map(({ b, gap }) => ({
         name: buildingName(b),
-        ...(dest ? { direction_from_place: compassWord(dir) } : {}),
         ...(dest || centerBuilding ? { gap: distancePhrase(gap), ...(gap <= ADJACENT_M ? { next_to: true } : {}) } : {}),
         floors: floors(b),
         from_user: whereIs(pos, projectOnRing(pos, b.outer).point),
@@ -416,7 +416,6 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
 
     const containing = s.buildingId ? pack.buildingById.get(s.buildingId) : undefined;
     return {
-      facing: compassWord(heading),
       ...(slopeAhead(pos, heading) ?? {}),
       // Straight ahead, nearest first: "the one behind that" is the next entry.
       in_line_ahead: lineOfSight(pack, pos, heading, LINE_RANGE_M).map((r) => r.name),

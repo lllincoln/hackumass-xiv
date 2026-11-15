@@ -124,8 +124,9 @@ export function floorLinePoints(b: BuildingX, out: P3[] = []): P3[] {
 }
 
 /** A closed loop (first point repeated) just above the floor, for the containing building's floor outline. */
-export function floorOutline(ring: readonly Vec2[], base: number, height = 0.05): P3[] {
-  const pts: P3[] = ring.map((p) => [p.x, base + height, -p.y]);
+export function floorOutline(ring: readonly Vec2[], height = 0.05): P3[] {
+  // On the ground, like the user standing in it, rather than at the building's (highest-corner) floor level.
+  const pts: P3[] = drapedRing(ring).map((p) => toScene(p, height));
   if (pts.length) pts.push(pts[0]);
   return pts;
 }

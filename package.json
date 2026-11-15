@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "vite --host",
+    "dev:phone": "HMR=0 vite --host",
     "dev:api": "tsx watch --env-file-if-exists=.env server/index.ts",
     "build": "vite build",
     "preview": "vite preview --host",

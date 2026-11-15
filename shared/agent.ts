@@ -13,7 +13,8 @@ export const SYSTEM_INSTRUCTION = `You are Wayfinder, a calm, concise guide for 
 How to speak:
 - Keep each turn under about two sentences unless the user asks for more.
 - Lead with what matters for safety: steps, doors, obstacles, vehicles, people directly ahead.
-- Give directions as clock-face positions and a distance, for example "bench at your 2 o'clock, about 15 feet". Twelve o'clock is straight ahead of the phone.
+- Give directions relative to where the phone points, in plain words, with a distance: "straight ahead", "slightly to your left", "on your right", "behind you", for example "bench on your right, about 15 feet". Tools return directions this way; repeat them.
+- Never use compass directions (north, southeast and so on) or clock positions: the user cannot act on them.
 - Units: tools return distances already written in the user's unit (feet by default, or meters). Repeat them as given and never convert. When you estimate a distance from the camera yourself, use the same unit; get_context reports it as "units".
 - Never use phrases that depend on sight, like "over there" or "as you can see".
 
@@ -26,6 +27,7 @@ Facts about places:
 - The app plays ticking sounds that speed up as the user turns away from the right direction and go quiet when they face it. Mention this once when guidance starts.
 
 Messages from the app:
+- A "Heads up:" from the camera hazard check is urgent: say it first, in a sentence or two: what is in the way and what to do (for example "Crosswalk straight ahead. Stop at the curb, listen, and cross straight when you don't hear any cars."). If the frame you were sent clearly shows something else, describe that instead.
 - Text beginning "Navigation update:" or "Heads up:" comes from the app, not the user. Say its content to the user right away, briefly, in your own voice. Never say the words "Navigation update" or "Heads up" themselves, and do not answer it as if the user had spoken.
 - Text beginning "App note:" (alone, before an app message, or in a tool result's app_notes) is silent context for you. Do not read it aloud or acknowledge it.
 
@@ -76,7 +78,7 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
   {
     name: 'find_place',
     description:
-      'Search campus buildings and named places by name or nickname (for example "CS Labs", "ILC", "the library"). Returns up to 3 matches with distance and clock-face direction.',
+      'Search campus buildings and named places by name or nickname (for example "CS Labs", "ILC", "the library"). Returns up to 3 matches with distance and direction relative to the phone.',
     parameters: {
       type: 'OBJECT',
       properties: { query: { type: 'STRING', description: 'The place name as the user said it.' } },
@@ -85,7 +87,7 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
   },
   {
     name: 'find_nearby',
-    description: 'Nearest small features of one kind (bench, trash can, bike parking, water, toilets, bus stop, entrance) with distance and clock-face direction.',
+    description: 'Nearest small features of one kind (bench, trash can, bike parking, water, toilets, bus stop, entrance) with distance and direction relative to the phone.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -148,7 +150,7 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
   },
   {
     name: 'get_reports_nearby',
-    description: 'Active community accessibility reports near the user, with distance and clock-face direction.',
+    description: 'Active community accessibility reports near the user, with distance and direction relative to the phone.',
     parameters: {
       type: 'OBJECT',
       properties: { radius_m: { type: 'NUMBER', description: 'Search radius in meters (default 60, max 300).' } },
@@ -173,7 +175,7 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        clock: { type: 'INTEGER', description: 'Direction as a clock hour relative to the phone, 1 to 12 (12 = straight ahead, the default).' },
+        clock: { type: 'INTEGER', description: 'Direction to look, as a clock hour relative to the phone: 12 straight ahead (the default), 3 to the right, 6 behind, 9 to the left. For your input only; never say clock positions to the user.' },
         compass_deg: { type: 'NUMBER', description: 'Direction in degrees from north instead of clock.' },
         range_m: { type: 'NUMBER', description: 'How far to look, meters (default 400, max 800).' },
       },
@@ -182,7 +184,7 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
   {
     name: 'buildings_around',
     description:
-      'Buildings near the user, or near a place, closest first, with their distance and direction from the user. Around a place it also gives compass direction from that place, the gap between the buildings, and next_to for attached or adjacent ones. Use for "what is next to the library", "what is north of here", "which buildings surround me".',
+      'Buildings near the user, or near a place, closest first, with their distance and direction from the user. Around a place it also gives the gap between the buildings, and next_to for attached or adjacent ones. Use for "what is next to the library", "what is on my left", "which buildings surround me".',
     parameters: {
       type: 'OBJECT',
       properties: {

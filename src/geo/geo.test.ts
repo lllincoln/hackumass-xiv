@@ -63,7 +63,7 @@ describe('bearings', () => {
     expect(clockFace(350)).toBe(12);
     expect(compassWord(44)).toBe('northeast');
     expect(compassWord(359)).toBe('north');
-    expect(relativeWords(5)).toBe('ahead');
+    expect(relativeWords(5)).toBe('straight ahead');
     expect(relativeWords(90)).toBe('on your right');
     expect(relativeWords(-45)).toBe('ahead, on your left');
     expect(relativeWords(180)).toBe('behind you');

@@ -15,7 +15,7 @@ import { useStore } from '../store';
 import { distanceShort } from '../units';
 import { groundAt } from '../data/terrain';
 import { BACKGROUND, GroundGrid, HAZE, RouteArrows, SkyDome } from './extras';
-import { buildingBase, buildingEdgePoints, buildingTop, EYE_HEIGHT_M, floorLinePoints, floorOutline, routeTube, toScene, wallsGeometry, waysGeometry, type P3 } from './geometry';
+import { buildingEdgePoints, buildingTop, EYE_HEIGHT_M, floorLinePoints, floorOutline, routeTube, toScene, wallsGeometry, waysGeometry, type P3 } from './geometry';
 import { advanceGlide, shown } from './glide';
 import { labelTexture } from './labels';
 import { Terrain } from './terrain';
@@ -70,14 +70,10 @@ function CameraRig() {
   useFrame((_, dt) => {
     // Follow the glided position (see glide.ts), not the raw estimate, so walking looks continuous.
     advanceGlide(dt);
-    // Eye height above the ground under the user (terrain), so hills rise and fall around them. Indoors, above the
-    // building's floor, which on a slope can be higher than the ground beneath it.
-    if (shown.ready) {
-      const { pack, buildingId } = useStore.getState();
-      const inside = buildingId ? pack?.buildingById.get(buildingId) : undefined;
-      const floor = inside ? Math.max(groundAt(shown), buildingBase(inside)) : groundAt(shown);
-      camera.position.set(shown.x, floor + EYE_HEIGHT_M, -shown.y);
-    }
+    // Eye height above the ground under the user (terrain), indoors too: a building's drawn floor level is the
+    // highest ground along its walls (so it never sinks into a slope), which on a hillside building like the ILC is
+    // metres above where the user actually stands. The lidar ground under a building follows its real grade.
+    if (shown.ready) camera.position.set(shown.x, groundAt(shown) + EYE_HEIGHT_M, -shown.y);
 
     // Standard deviceorientation → camera quaternion. Without a sensor, look level along the known heading.
     const o = orientation;
@@ -163,7 +159,7 @@ function Buildings() {
   const containing = buildingId ? pack?.buildingById.get(buildingId) : undefined;
   const containingEdges = useMemo(() => (containing ? buildingEdgePoints(containing) : []), [containing]);
   const floor = useMemo(
-    () => (containing ? [containing.outer, ...containing.holes].map((r) => floorOutline(r, buildingBase(containing))) : []),
+    () => (containing ? [containing.outer, ...containing.holes].map((r) => floorOutline(r)) : []),
     [containing],
   );
 

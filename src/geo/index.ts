@@ -133,12 +133,12 @@ export function compassWord(deg: number): string {
   return COMPASS[Math.round(norm360(deg) / 45) % 8];
 }
 
-/** "ahead", "ahead on your right", "on your right", "behind you"… for a signed relative angle. */
+/** "straight ahead", "ahead, on your right", "on your right", "behind you"… for a signed relative angle. */
 export function relativeWords(relativeDeg: number): string {
   const d = angleDiff(0, relativeDeg);
   const a = Math.abs(d);
   const side = d >= 0 ? 'right' : 'left';
-  if (a <= 20) return 'ahead';
+  if (a <= 20) return 'straight ahead';
   if (a <= 60) return `ahead, on your ${side}`;
   if (a <= 120) return `on your ${side}`;
   if (a <= 160) return `behind you, on your ${side}`;

@@ -5,7 +5,7 @@ import { toLocal, toLonLat, type BuildingX, type FeatureX, type PackIndex } from
 import {
   angleDiff,
   bearingENU,
-  clockPhrase,
+  relativeWords,
   cumulativeLengths,
   dist,
   pointAlong,
@@ -109,8 +109,9 @@ function refineDestination(index: PackIndex, dest: Destination, from: Vec2): Lon
   return { lon: best.lon, lat: best.lat };
 }
 
-function relativeClock(from: Vec2, to: Vec2): string {
-  return clockPhrase(angleDiff(orientation.heading, bearingENU(from, to)));
+/** "straight ahead", "on your left", "behind you"… from where the phone points. Never compass words. */
+function relativeDirection(from: Vec2, to: Vec2): string {
+  return orientation.has ? relativeWords(angleDiff(orientation.heading, bearingENU(from, to))) : 'in a direction the compass cannot tell yet';
 }
 
 function setNav(nav: NavState | null): void {
@@ -204,8 +205,10 @@ export async function startNavigation(dest: Destination): Promise<StartResult> {
     total_distance: metersPhrase(route.totalM),
     duration_min: Math.max(1, Math.round(route.durationS / 60)),
     first_steps: route.steps.slice(0, 5).map((s) => s.text),
+    // Which way to start walking, relative to the phone (the first instruction itself names no direction).
+    ...(!entrance || entrance.reached ? { start_direction: relativeDirection(pos, pointAlong(route.line, route.cum, Math.min(10, route.totalM))) } : {}),
     ...(entrance && !entrance.reached
-      ? { exit_first: `First leave the building: the exit door is ${metersPhrase(dist(pos, entrance.pos))} away at ${relativeClock(pos, entrance.pos)}.` }
+      ? { exit_first: `First leave the building: the exit door is ${metersPhrase(dist(pos, entrance.pos))} away, ${relativeDirection(pos, entrance.pos)}.` }
       : {}),
     ...(notes.length ? { notes: notes.slice(0, 4) } : {}),
   };
@@ -230,7 +233,7 @@ export function pointTo(dest: Destination): { ok: true; distance: string; direct
     targetBearing: bearingENU(pos, target),
     reportIds: [],
   });
-  return { ok: true, distance: metersPhrase(dist(pos, target)), direction: relativeClock(pos, target) };
+  return { ok: true, distance: metersPhrase(dist(pos, target)), direction: relativeDirection(pos, target) };
 }
 
 export function stopNavigation(): boolean {

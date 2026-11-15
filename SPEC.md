@@ -183,8 +183,8 @@ GPS indoors is often 20–60 m off or stale. Browsers can't access Wi-Fi RTT or 
 
 **Feedback** (`src/feedback`):
 - error = |angleDiff(heading, targetBearing)|.
-- Deadband ±8° (left only past ±10°): silent, with a soft confirmation chime when entering the deadband.
-- 8–90°: tick rate rises from 2 Hz to 8 Hz with error, and stays at 8 Hz beyond 90°. The tick is a short Web Audio oscillator blip, **stereo-panned toward the side the user should turn** (pan = sign(diff) × min(1, error/90)), with pitch rising slightly as error grows.
+- Deadband ±20° (left only past ±24°): silent, with a soft confirmation chime when entering the deadband.
+- 20–90°: tick rate rises from 2 Hz to 8 Hz with error, and stays at 8 Hz beyond 90°. The tick is a short Web Audio oscillator blip, **stereo-panned toward the side the user should turn** (pan = sign(diff) × min(1, error/90)), with pitch rising slightly as error grows.
 - Android: `navigator.vibrate` pulses in sync with ticks; pulse length grows with error.
 - iOS: optionally fire the hidden `<input type="checkbox" switch>` haptic trick on each tick (a short tap only); feature-flag it, off by default.
 - Duck tick volume while Gemini is speaking.

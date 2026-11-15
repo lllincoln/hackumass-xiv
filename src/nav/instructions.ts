@@ -18,6 +18,9 @@ function fallback(step: OsrmStep): string {
 
 /** One spoken sentence for the maneuver at the start of `step`, without a trailing period. */
 export function instructionFor(step: OsrmStep): string {
+  // The departure instruction names a compass direction ("Head southeast on …"), which a blind user cannot act on.
+  // Say it without one: the ticking sound and start_direction (relative to the phone) tell them which way to face.
+  if (step.maneuver.type === 'depart') return `Start walking${step.name ? ` on ${step.name}` : ''}`;
   try {
     compiler ??= osrmTextInstructions('v5');
     const text = compiler.compile('en', step);

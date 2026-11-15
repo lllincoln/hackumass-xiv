@@ -53,6 +53,8 @@ class LiveAgent {
   private inModelTurn = false;
   /** The user cut the guide off: drop the rest of that reply until the server ends or interrupts it. */
   private muted = false;
+  /** What the guide has said in the current turn (from its transcript), to tell whether it ended with a question. */
+  private turnText = '';
 
   /**
    * Any text sent into the session while the model is answering (or the user is speaking) makes the server
@@ -80,6 +82,8 @@ class LiveAgent {
   onReplyStart: (() => void) | null = null;
   /** A piece of the user's speech was transcribed. */
   onUserSpeech: (() => void) | null = null;
+  /** The guide finished a spoken turn; `text` is what it said. Not called for replies the user cut off. */
+  onTurnEnd: ((text: string) => void) | null = null;
 
   isLive(): boolean {
     return this.session !== null && useStore.getState().geminiStatus === 'live';
@@ -240,9 +244,16 @@ class LiveAgent {
       }
       const store = useStore.getState();
       if (sc.inputTranscription?.text) store.pushCaption('user', sc.inputTranscription.text);
-      if (sc.outputTranscription?.text && !this.muted) store.pushCaption('agent', sc.outputTranscription.text);
+      if (sc.outputTranscription?.text && !this.muted) {
+        store.pushCaption('agent', sc.outputTranscription.text);
+        this.turnText += sc.outputTranscription.text;
+      }
+      if (sc.interrupted) this.turnText = '';
       if (sc.turnComplete) {
         store.finishCaptions();
+        const said = this.turnText.trim();
+        this.turnText = '';
+        if (said && !this.muted) this.onTurnEnd?.(said);
         this.inModelTurn = false;
         this.muted = false;
         this.setIdle();
