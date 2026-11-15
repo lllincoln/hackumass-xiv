@@ -4,7 +4,7 @@ A voice-first navigation camera for blind and low-vision people, built for HackU
 
 - **Voice agent** (Gemini Live): sees through the camera, finds places and features, starts navigation.
 - **Bearing guidance**: ticks that speed up and pan toward the side to turn; vibration on Android.
-- **X-ray mode**: a wireframe of buildings, paths and features from OpenStreetMap that follows the phone.
+- **X-ray mode**: a wireframe of buildings, paths and features from OpenStreetMap that follows the phone, standing on the real terrain (USGS 3DEP 1 m lidar).
 - **Community reports** (MongoDB Atlas): hazards and helpful features, shared live between users.
 
 ## Run locally
@@ -13,6 +13,7 @@ A voice-first navigation camera for blind and low-vision people, built for HackU
 npm install
 cp .env.example .env        # add GEMINI_API_KEY and MONGODB_URI
 npm run pack                # once: Overpass → public/data/campus.json (commit the result)
+npm run terrain             # after pack: USGS 3DEP lidar → public/data/terrain.json + terrain.bin (commit the result; downloads are cached)
 npm run dev:api             # API on :8787
 npm run dev                 # app on :5173, proxies /api
 ```
@@ -42,6 +43,7 @@ It pulls, builds the frontend in a Node container, and runs `docker compose up -
 ## Data and services
 
 - Map data © OpenStreetMap contributors (ODbL), via Overpass at build time.
+- Elevation: USGS 3D Elevation Program (3DEP) 1 m lidar, bare earth (public domain), fetched at build time; contours are traced from it. The earlier MassGIS 3 m contours for Amherst and Hadley are kept in `data/topo` for reference but no longer used.
 - Routing: FOSSGIS OSRM foot profile, called from the browser at most once per second.
 - Geocoding fallback: Nominatim through `/api/geocode`, cached, at most once per second.
 

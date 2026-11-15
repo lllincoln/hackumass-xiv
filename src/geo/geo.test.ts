@@ -11,6 +11,8 @@ import {
   pointInPolygon,
   projectOnPolyline,
   projectOnSegment,
+  rayRingCrossings,
+  ringGap,
   relativeWords,
   toENU,
 } from './index';
@@ -111,5 +113,36 @@ describe('polygons and polylines', () => {
     expect(pointAlong(line, cum, 15)).toEqual({ x: 10, y: 5 });
     expect(pointAlong(line, cum, 99)).toEqual({ x: 10, y: 10 });
     expect(pointAlong(line, cum, -1)).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('ray casting', () => {
+  // 10 m square from (10,10) to (20,20)
+  const sq = [
+    { x: 10, y: 10 },
+    { x: 20, y: 10 },
+    { x: 20, y: 20 },
+    { x: 10, y: 20 },
+  ];
+
+  it('finds where a ray enters and leaves a ring', () => {
+    const t = rayRingCrossings({ x: 15, y: 0 }, 0, sq); // due north through the middle
+    expect(t).toHaveLength(2);
+    expect(t[0]).toBeCloseTo(10);
+    expect(t[1]).toBeCloseTo(20);
+  });
+
+  it('misses a ring off to the side or behind', () => {
+    expect(rayRingCrossings({ x: 15, y: 0 }, 90, sq)).toHaveLength(0);
+    expect(rayRingCrossings({ x: 15, y: 30 }, 0, sq)).toHaveLength(0);
+  });
+
+  it('has an odd count from inside', () => {
+    expect(rayRingCrossings({ x: 15, y: 15 }, 45, sq)).toHaveLength(1);
+  });
+
+  it('measures the gap between footprints', () => {
+    const right = sq.map((p) => ({ x: p.x + 15, y: p.y })); // 5 m to the east
+    expect(ringGap(sq, right)).toBeCloseTo(5);
   });
 });

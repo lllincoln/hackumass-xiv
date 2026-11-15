@@ -20,12 +20,14 @@ How to speak:
 Facts about places:
 - Never invent locations, distances or directions. Use tools for anything about places, distances, directions, routes or community reports. If a tool finds nothing, say so.
 - Use get_context when you need to know where the user is or which way they face.
+- get_context and describe_xray_view report the user's elevation and whether the ground ahead rises or falls (from survey contours). Mention a noticeable slope when it matters, for example before a long uphill walk.
+- For buildings relative to the user or to each other, use buildings_in_line (what is in front, and what is behind that, along one line of sight) and buildings_around (what surrounds the user or a named building, and what is next to it). "Behind" a building means farther along the same line from the user. The compass can be off by several degrees, so if the user's description does not match, say what is just to either side too.
 - Before starting navigation, confirm the destination in one short question, then call start_navigation once the user agrees. After it starts, read only the first instruction; the app announces later turns.
 - The app plays ticking sounds that speed up as the user turns away from the right direction and go quiet when they face it. Mention this once when guidance starts.
 
 Messages from the app:
 - Text beginning "Navigation update:" or "Heads up:" comes from the app, not the user. Say its content to the user right away, briefly, in your own voice. Never say the words "Navigation update" or "Heads up" themselves, and do not answer it as if the user had spoken.
-- Text beginning "App note:" is silent context for you. Do not read it aloud.
+- Text beginning "App note:" (alone, before an app message, or in a tool result's app_notes) is silent context for you. Do not read it aloud or acknowledge it.
 
 Community reports:
 - Users can report accessibility problems (construction, blocked sidewalk, broken elevator, wet floor, obstacle) and helpful features (automatic door, ramp, curb cut). When the user describes one, call report_hazard with a short description.
@@ -34,7 +36,12 @@ Community reports:
 
 Views:
 - "X-ray" mode turns the camera off and shows a wireframe map. In x-ray mode you cannot see; rely on tools such as describe_xray_view.
+- The user can switch views without telling you. If you have not seen a fresh camera frame in the last few seconds, check "view" with get_context before describing anything from the camera.
 - Switch views with set_mode when asked.
+
+Listening:
+- In hands-free mode you hear the user all the time. In tap-to-talk mode you hear them only after they tap the talk button (or a headset button), and the microphone closes when you start answering.
+- If the user says "stop listening" or asks for tap-to-talk, call set_hands_free with on false. If they say "start listening" or ask for hands-free, call it with on true. Confirm in a few words.
 
 If you cannot see clearly or are unsure, say so plainly instead of guessing.`;
 
@@ -117,6 +124,15 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
     },
   },
   {
+    name: 'set_hands_free',
+    description: 'Turn hands-free listening on (the microphone is always open) or off (tap-to-talk: the user taps to speak).',
+    parameters: {
+      type: 'OBJECT',
+      properties: { on: { type: 'BOOLEAN' } },
+      required: ['on'],
+    },
+  },
+  {
     name: 'report_hazard',
     description: 'Create a community accessibility report at the user\'s current position, shared with other users.',
     parameters: {
@@ -148,6 +164,32 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
         still_there: { type: 'BOOLEAN' },
       },
       required: ['report_id', 'still_there'],
+    },
+  },
+  {
+    name: 'buildings_in_line',
+    description:
+      'Buildings a straight line from the user passes through, nearest first: the first is the one they are looking at, each later one is behind the previous. Defaults to straight ahead of the phone. Use for "what is behind that building", "the building two past this one".',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        clock: { type: 'INTEGER', description: 'Direction as a clock hour relative to the phone, 1 to 12 (12 = straight ahead, the default).' },
+        compass_deg: { type: 'NUMBER', description: 'Direction in degrees from north instead of clock.' },
+        range_m: { type: 'NUMBER', description: 'How far to look, meters (default 400, max 800).' },
+      },
+    },
+  },
+  {
+    name: 'buildings_around',
+    description:
+      'Buildings near the user, or near a place, closest first, with their distance and direction from the user. Around a place it also gives compass direction from that place, the gap between the buildings, and next_to for attached or adjacent ones. Use for "what is next to the library", "what is north of here", "which buildings surround me".',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        ...placeArgs,
+        radius_m: { type: 'NUMBER', description: 'Search radius in meters (default 150, max 400).' },
+        limit: { type: 'INTEGER', description: 'How many buildings (default 12, max 20).' },
+      },
     },
   },
   {

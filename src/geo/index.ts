@@ -178,3 +178,35 @@ export function projectOnRing(p: Vec2, ring: readonly Vec2[]): SegmentProjection
   }
   return best;
 }
+
+/**
+ * Distances along a ray (from `origin`, bearing in degrees clockwise from north) at which it crosses the
+ * edges of a closed ring, sorted ascending. An even count means the origin is outside the ring.
+ */
+export function rayRingCrossings(origin: Vec2, bearingDeg: number, ring: readonly Vec2[]): number[] {
+  const dx = Math.sin(bearingDeg * RAD);
+  const dy = Math.cos(bearingDeg * RAD);
+  const out: number[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue; // parallel
+    const ax = a.x - origin.x;
+    const ay = a.y - origin.y;
+    const t = (ax * ey - ay * ex) / den; // along the ray
+    const u = (ax * dy - ay * dx) / den; // along the edge
+    if (t >= 0 && u >= 0 && u < 1) out.push(t);
+  }
+  return out.sort((p, q) => p - q);
+}
+
+/** Approximate gap between two closed rings' outlines: vertex-to-edge distance, both ways (near 0 when they touch). */
+export function ringGap(a: readonly Vec2[], b: readonly Vec2[]): number {
+  let best = Infinity;
+  for (const p of a) best = Math.min(best, projectOnRing(p, b).dist);
+  for (const p of b) best = Math.min(best, projectOnRing(p, a).dist);
+  return best;
+}

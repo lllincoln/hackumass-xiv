@@ -4,8 +4,8 @@
 
 import { useStore } from '../store';
 
-/** Higher = tighter to the estimate, lower = smoother. About 0.3 s to cover most of a step. */
-const GLIDE_RATE = 3.5;
+/** Higher = tighter to the estimate, lower = smoother. About 0.1 s to cover most of a step (trails ~15 cm at walking pace). */
+const GLIDE_RATE = 9;
 /** A change this large is a teleport (first fix, simulator click): jump instead of flying across campus. */
 const TELEPORT_M = 40;
 

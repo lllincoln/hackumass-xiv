@@ -31,6 +31,11 @@
   --text: 1rem;
 
   --safe-top: env(safe-area-inset-top, 0px);
+  /* The compass strip at the bottom center, between the settings and microphone buttons (60 px, 18 px in). */
+  --compass-w: clamp(140px, calc(100vw - 176px), 360px);
+  /* The minimap's resting size; the status panel sits under it at the same width. */
+  --minimap-size: clamp(112px, 30vw, 250px);
+  --compass-h: 34px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
 }
@@ -298,7 +303,7 @@ select:focus-visible {
   inset: 0;
 }
 
-/* View switch: the x-ray scene opens in a circle growing out of the switch button; the camera sinks back. */
+/* View switch: the x-ray scene opens in a circle growing out of the middle of the screen; the camera sinks back. */
 .layer-camera {
   transition: transform 0.6s cubic-bezier(0.65, 0, 0.2, 1), filter 0.6s ease;
 }
@@ -309,7 +314,7 @@ select:focus-visible {
 }
 
 .layer-xray {
-  --origin: 50% calc(100% - var(--safe-bottom) - 58px);
+  --origin: 50% 50%;
   clip-path: circle(0% at var(--origin));
   transition: clip-path 0.6s cubic-bezier(0.65, 0, 0.2, 1);
   pointer-events: none;
@@ -350,46 +355,7 @@ select:focus-visible {
   pointer-events: none;
 }
 
-/* ---- Bottom dock: settings · view switch · microphone */
-
-.mode-button {
-  position: absolute;
-  z-index: 30;
-  left: 50%;
-  bottom: calc(var(--safe-bottom) + 20px);
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  min-width: 196px;
-  min-height: 76px;
-  padding: 0 30px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--ink);
-  color: #0b0c10;
-  font-size: 1.6rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
-  transition: transform 0.12s ease;
-}
-
-.mode-button:active {
-  transform: translateX(-50%) scale(0.97);
-}
-
-.mode-button svg {
-  width: 30px;
-  height: 30px;
-}
-
-:root.hc .mode-button {
-  background: var(--accent);
-  outline: 3px solid #000;
-  box-shadow: 0 0 0 5px #fff;
-}
+/* ---- Bottom dock: settings · microphone */
 
 .dock-button {
   position: absolute;
@@ -427,12 +393,16 @@ select:focus-visible {
 .status {
   position: absolute;
   z-index: 20;
-  top: calc(var(--safe-top) + 12px);
-  left: 12px;
-  max-width: calc(70vw - 60px);
-  padding: 12px 16px;
-  border-radius: var(--radius);
-  font-size: var(--text);
+  /* Under the minimap, the same width, so the whole top-left is free for the compass. */
+  top: calc(var(--safe-top) + 12px + var(--minimap-size) + 8px);
+  right: 12px;
+  /* Below the compass's row, so it can grow leftward past the minimap's width for long names. */
+  max-width: max(var(--minimap-size), 55vw);
+  box-sizing: border-box;
+  padding: 8px 12px 9px;
+  border-radius: 16px;
+  font-size: calc(var(--text) * 0.92);
+  line-height: 1.25;
   pointer-events: none;
 }
 
@@ -440,48 +410,237 @@ select:focus-visible {
   margin: 0;
 }
 
+/* No panel: text straight over the scene, with a shadow to stay readable on bright wireframe or camera.
+   Right-aligned under the minimap. */
+.status {
+  padding: 2px 2px 0;
+  text-align: right;
+}
+
+.status .status-meta,
+.status .status-target {
+  justify-content: flex-end;
+}
+
+.status {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.7);
+}
+
+/* High contrast keeps a solid panel: shadows are not enough for people who need maximum contrast. */
+:root.hc .status {
+  padding: 8px 12px 9px;
+  border-radius: 16px;
+  background: #000;
+  border: var(--stroke-width) solid var(--stroke);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* Place name: at most two lines, then an ellipsis. */
 .status-place {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .status .status-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 2px;
-  font-size: 0.88em;
+  gap: 0 5px;
+  margin-top: 3px;
+  font-size: 0.78em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
+}
+
+.status-accuracy {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 6px currentColor;
+}
+
+.status-accuracy[data-quality='good'] {
+  color: var(--ok);
+  background: var(--ok);
+}
+
+.status-accuracy[data-quality='fair'] {
+  color: var(--warn);
+  background: var(--warn);
+}
+
+.status-accuracy[data-quality='poor'] {
+  color: var(--danger);
+  background: var(--danger);
 }
 
 .status-dot {
   flex: none;
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--warn);
 }
 
 .status .status-problem {
+  flex-wrap: nowrap;
   color: var(--warn);
-  font-weight: 600;
 }
 
 .status .status-target {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--stroke);
+  font-size: 0.85em;
   color: var(--accent);
   font-weight: 650;
 }
 
 .status-target svg {
   flex: none;
-  width: 18px;
-  height: 18px;
-  margin-top: 0.15em;
+  width: 15px;
+  height: 15px;
+  margin-top: 0.1em;
+}
+
+/* ------------------------------------------------------------------ Compass strip */
+
+.compass-bar {
+  position: absolute;
+  z-index: 15;
+  /* Level with the dock buttons (60 px tall, 28 px up), its readout above the strip. */
+  bottom: calc(var(--safe-bottom) + 34px);
+  left: 50%;
+  width: var(--compass-w);
+  height: var(--compass-h);
+  margin-left: calc(var(--compass-w) / -2);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.compass-bar[data-ready='false'] {
+  opacity: 0;
+}
+
+/* No background: just ticks and letters over the scene, fading out toward both ends. */
+.compass-window {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 30%, #000 70%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 30%, #000 70%, transparent);
+}
+
+.compass-tape {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  will-change: transform;
+  /* Legible over bright wireframe or the camera image without a panel behind it. */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+
+.compass-tick {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  margin-left: -1px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--ink);
+  opacity: 0.75;
+}
+
+.compass-letter {
+  height: 11px;
+  opacity: 1;
+}
+
+.compass-tick[data-north] {
+  background: var(--danger);
+}
+
+.compass-label {
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: calc(var(--text) * 0.62);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.compass-letter .compass-label {
+  top: 10px;
+  font-size: calc(var(--text) * 0.9);
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.compass-tick[data-north] .compass-label {
+  color: var(--danger);
+}
+
+/* Where the phone points. */
+.compass-needle {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-bottom: 6px solid var(--accent);
+  border-top: 0;
+}
+
+/* Direction to walk (the navigation target bearing). */
+.compass-target {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  will-change: transform;
+}
+
+.compass-target::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background: var(--accent);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.compass-readout {
+  position: absolute;
+  bottom: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: calc(var(--text) * 0.7);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------------ Minimap */
@@ -492,7 +651,7 @@ select:focus-visible {
   top: calc(var(--safe-top) + 12px);
   right: 12px;
   /* Explicit width and height (not aspect-ratio) so the grow-to-full-screen transition can interpolate. */
-  --size: clamp(112px, 30vw, 250px);
+  --size: var(--minimap-size);
   width: var(--size);
   height: var(--size);
   border: var(--stroke-width) solid var(--stroke);
@@ -639,6 +798,24 @@ select:focus-visible {
   font-weight: 550;
   line-height: 1.3;
   pointer-events: none;
+}
+
+.captions,
+.caption {
+  transition: opacity 1s ease;
+}
+
+/* Old lines fade out (Main.tsx removes them once the fade is over); the panel goes with the last one. */
+.caption-fading,
+.captions-fading {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .captions,
+  .caption {
+    transition: none;
+  }
 }
 
 .caption {

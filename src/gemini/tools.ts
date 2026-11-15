@@ -6,9 +6,10 @@ import { FEATURE_KINDS } from '../../shared/agent';
 import { PERMANENT_KINDS, REPORT_KINDS, REPORT_LABELS, type ReportKind } from '../../shared/reports';
 import { setMode } from '../app/mode';
 import { searchPlaces } from '../data/gazetteer';
-import { buildingsWithin, featuresWithin, nearestFeatures, toLocal, toLonLat, type PackIndex } from '../data/pack';
+import { elevationAt } from '../data/terrain';
+import { buildingsAlongRay, buildingsWithin, featuresWithin, nearestFeatures, toLocal, toLonLat, type BuildingX, type PackIndex } from '../data/pack';
 import type { FeatureKind } from '../data/types';
-import { angleDiff, bearingENU, clockPhrase, compassWord, dist, projectOnRing, type LonLat, type Vec2 } from '../geo';
+import { angleDiff, bearingENU, clockPhrase, compassWord, dist, norm360, projectOnRing, ringGap, type LonLat, type Vec2 } from '../geo';
 import { pointTo, startNavigation, stopNavigation, type Destination } from '../nav/navigator';
 import { reportsApi } from '../reports/api';
 import { markOwnReport, removeReport, upsertReport } from '../reports/watcher';
@@ -29,11 +30,16 @@ const FEATURE_NAMES: Record<string, string> = {
   bus_stop: 'bus stop',
   entrance: 'entrance',
   picnic_table: 'picnic table',
-  tree: 'tree',
 };
 
 const XRAY_HALF_FOV_DEG = 35;
 const XRAY_RANGE_M = 80;
+const LINE_RANGE_M = 400;
+const LINE_MAX_M = 800;
+const AROUND_RADIUS_M = 150;
+const AROUND_MAX_M = 400;
+/** Buildings this close count as next to each other (attached, or across a narrow gap). */
+const ADJACENT_M = 8;
 
 class ToolError extends Error {}
 
@@ -52,6 +58,62 @@ function whereIs(pos: Vec2, target: Vec2): { distance: string; clock?: string; c
     ...(orientation.has ? { clock: clockPhrase(angleDiff(orientation.heading, b)) } : {}),
     compass: compassWord(b),
   };
+}
+
+/** Ground this far ahead decides "uphill" or "downhill". */
+const SLOPE_AHEAD_M = 30;
+/** Less rise or fall than this over SLOPE_AHEAD_M counts as level. */
+const LEVEL_M = 0.8;
+
+/** Whether the ground rises or falls along a bearing from `pos`, in words, or null without terrain. */
+function slopeAhead(pos: Vec2, bearingDeg: number): { ground_ahead: string } | null {
+  const here = elevationAt(pos);
+  const h = (bearingDeg * Math.PI) / 180;
+  const there = elevationAt({ x: pos.x + Math.sin(h) * SLOPE_AHEAD_M, y: pos.y + Math.cos(h) * SLOPE_AHEAD_M });
+  if (here === null || there === null) return null;
+  const d = there - here;
+  const over = `over the next ${distancePhrase(SLOPE_AHEAD_M)}`;
+  if (Math.abs(d) < LEVEL_M) return { ground_ahead: `level ${over}` };
+  return { ground_ahead: `${d > 0 ? 'rises' : 'falls'} ${distancePhrase(Math.abs(d))} ${over} (${d > 0 ? 'uphill' : 'downhill'})` };
+}
+
+/** How the model should refer to a building: its name, or a short description of an unnamed one. */
+function buildingName(b: BuildingX): string {
+  if (b.name) return b.name;
+  const size = b.area > 4000 ? 'large' : b.area < 400 ? 'small' : 'mid-size';
+  return `unnamed ${size} building`;
+}
+
+/** Rough height in floors from the mapped height (about 3.5 m a floor). */
+function floors(b: BuildingX): number {
+  return Math.max(1, Math.round(b.heightM / 3.5));
+}
+
+/** Buildings straight along a bearing from the user, nearest first, as tool output. */
+function lineOfSight(pack: PackIndex, pos: Vec2, bearingDeg: number, rangeM: number) {
+  let prevExit = 0;
+  return buildingsAlongRay(pack, pos, bearingDeg, rangeM).map((h, i) => {
+    const row = {
+      order: i + 1,
+      name: buildingName(h.building),
+      ...(h.enterM === 0 ? { you_are_inside: true } : { distance: distancePhrase(h.enterM) }),
+      depth: distancePhrase(h.exitM - h.enterM),
+      ...(i > 0 ? { gap_after_previous: distancePhrase(Math.max(0, h.enterM - prevExit)) } : {}),
+      floors: floors(h.building),
+    };
+    prevExit = h.exitM;
+    return row;
+  });
+}
+
+/** A direction argument: clock hour relative to the phone (12 = ahead) or a compass bearing. Defaults to ahead. */
+function bearingArg(args: Args): number {
+  const deg = num(args.compass_deg);
+  if (deg !== undefined) return norm360(deg);
+  if (!orientation.has) throw new ToolError('Compass heading is not available yet. Give compass_deg instead.');
+  const hour = num(args.clock);
+  if (hour !== undefined && (hour < 1 || hour > 12)) throw new ToolError('clock must be 1 to 12.');
+  return norm360(orientation.heading + ((hour ?? 12) % 12) * 30);
 }
 
 function num(v: unknown): number | undefined {
@@ -107,6 +169,8 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
       units: unitName(),
       ...(ll ? { lon: Number(ll.lon.toFixed(6)), lat: Number(ll.lat.toFixed(6)), accuracy: `within ${distancePhrase(s.sigma)}` } : {}),
       where: s.indoors ? 'indoors' : 'outdoors',
+      ...(s.pos && elevationAt(s.pos) !== null ? { elevation: `${distancePhrase(elevationAt(s.pos)!)} above sea level` } : {}),
+      ...(s.pos && orientation.has ? (slopeAhead(s.pos, orientation.heading) ?? {}) : {}),
       ...(building ? { building: building.name ?? 'an unnamed building' } : {}),
       ...(orientation.has ? { facing: compassWord(orientation.heading), heading_deg: Math.round(orientation.heading) } : { facing: 'unknown' }),
       view: s.mode,
@@ -194,6 +258,12 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
     return { ok: true, mode };
   },
 
+  set_hands_free(args) {
+    if (typeof args.on !== 'boolean') throw new ToolError('on must be true or false.');
+    useStore.getState().setSetting('handsFree', args.on);
+    return { ok: true, hands_free: args.on, note: args.on ? 'Microphone always open.' : 'User now taps to talk.' };
+  },
+
   async report_hazard(args) {
     const { pack, pos } = need();
     const kind = String(args.kind ?? '') as ReportKind;
@@ -263,6 +333,61 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
     return { ok: true, note: 'Recorded. The report is removed once three people say it is gone.' };
   },
 
+  buildings_in_line(args) {
+    const { pack, pos } = need();
+    const b = bearingArg(args);
+    const range = Math.max(50, Math.min(LINE_MAX_M, num(args.range_m) ?? LINE_RANGE_M));
+    const buildings = lineOfSight(pack, pos, b, range);
+    return {
+      direction: compassWord(b),
+      range: distancePhrase(range),
+      buildings,
+      note: buildings.length
+        ? 'Order 1 is the first building the line reaches (the one the user is looking at); each later one is behind the one before it.'
+        : 'No mapped building lies on that line. Try a nearby clock direction or buildings_around.',
+    };
+  },
+
+  buildings_around(args) {
+    const { pack, pos } = need();
+    const radius = Math.max(30, Math.min(AROUND_MAX_M, num(args.radius_m) ?? AROUND_RADIUS_M));
+    const limit = Math.max(1, Math.min(20, Math.round(num(args.limit) ?? 12)));
+
+    // Centered on the user, or on a place (then directions are compass directions from that place).
+    const hasPlace = typeof args.place_id === 'string' || (num(args.lon) !== undefined && num(args.lat) !== undefined);
+    const dest = hasPlace ? resolvePlace(pack, args) : null;
+    const centerPos = dest ? toLocal(pack, dest.ll) : pos;
+    const centerBuilding = dest?.buildingId
+      ? pack.buildingById.get(dest.buildingId)
+      : !dest && useStore.getState().buildingId
+        ? pack.buildingById.get(useStore.getState().buildingId!)
+        : undefined;
+
+    const rows = buildingsWithin(pack, centerPos, radius)
+      .filter((b) => b.id !== centerBuilding?.id)
+      .map((b) => {
+        const near = projectOnRing(centerPos, b.outer);
+        const gap = centerBuilding ? ringGap(centerBuilding.outer, b.outer) : near.dist;
+        return { b, gap, dir: bearingENU(centerPos, b.centroid) };
+      })
+      .filter((r) => r.gap <= radius)
+      .sort((a, b) => a.gap - b.gap)
+      .slice(0, limit)
+      .map(({ b, gap, dir }) => ({
+        name: buildingName(b),
+        ...(dest ? { direction_from_place: compassWord(dir) } : {}),
+        ...(dest || centerBuilding ? { gap: distancePhrase(gap), ...(gap <= ADJACENT_M ? { next_to: true } : {}) } : {}),
+        floors: floors(b),
+        from_user: whereIs(pos, projectOnRing(pos, b.outer).point),
+      }));
+
+    return {
+      around: dest ? dest.label : centerBuilding ? `the user, inside ${buildingName(centerBuilding)}` : 'the user',
+      radius: distancePhrase(radius),
+      buildings: rows,
+    };
+  },
+
   describe_xray_view() {
     const { pack, pos } = need();
     if (!orientation.has) throw new ToolError('Compass heading is not available yet.');
@@ -280,7 +405,7 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
       .map(({ b, near }) => ({ name: b.name ?? 'unnamed building', ...whereIs(pos, near) }));
 
     const features = featuresWithin(pack, pos, XRAY_RANGE_M)
-      .filter(({ feature }) => feature.kind !== 'tree' && inView(feature.pos))
+      .filter(({ feature }) => inView(feature.pos))
       .slice(0, 10)
       .map(({ feature }) => ({ kind: FEATURE_NAMES[feature.kind], ...(feature.name ? { name: feature.name } : {}), ...whereIs(pos, feature.pos) }));
 
@@ -292,6 +417,9 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
     const containing = s.buildingId ? pack.buildingById.get(s.buildingId) : undefined;
     return {
       facing: compassWord(heading),
+      ...(slopeAhead(pos, heading) ?? {}),
+      // Straight ahead, nearest first: "the one behind that" is the next entry.
+      in_line_ahead: lineOfSight(pack, pos, heading, LINE_RANGE_M).map((r) => r.name),
       ...(containing ? { inside: containing.name ?? 'an unnamed building' } : {}),
       buildings,
       features,

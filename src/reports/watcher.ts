@@ -64,7 +64,7 @@ function checkProximity(): void {
     announce(
       `${lead}${REPORT_LABELS[r.kind]} reported ${metersPhrase(d)} away${where}. ${r.description}${onRoute}`,
       'Heads up',
-      `(For vote_report: report_id ${r.id}. Do not read the id aloud.)`,
+      { agentOnly: `(For vote_report: report_id ${r.id}. Do not read the id aloud.)` },
     );
   }
 }

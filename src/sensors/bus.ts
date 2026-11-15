@@ -1,6 +1,15 @@
 // Tiny typed event bus between sensor sources (real or simulated) and their consumers.
 
-export type GpsFix = { lon: number; lat: number; accuracy: number; time: number };
+export type GpsFix = {
+  lon: number;
+  lat: number;
+  accuracy: number;
+  /** When the fix was taken (epoch ms; may be a little before it arrives). */
+  time: number;
+  /** Ground speed m/s and course degrees from north, when the phone reports them (only while moving). */
+  speed?: number | null;
+  heading?: number | null;
+};
 
 type Events = {
   gps: GpsFix;

@@ -5,18 +5,19 @@ import { scoreKey } from '../data/gazetteer';
 import { inDeadband, tickParams } from './logic';
 
 describe('bearing feedback', () => {
-  it('is silent inside ±15°, with hysteresis on the way out', () => {
-    expect(inDeadband(10, false)).toBe(true);
-    expect(inDeadband(-15, false)).toBe(true);
-    expect(inDeadband(17, false)).toBe(false);
-    expect(inDeadband(17, true)).toBe(true);
-    expect(inDeadband(19, true)).toBe(false);
+  it('is silent inside ±8°, with hysteresis on the way out', () => {
+    expect(inDeadband(5, false)).toBe(true);
+    expect(inDeadband(-8, false)).toBe(true);
+    expect(inDeadband(9, false)).toBe(false);
+    expect(inDeadband(9, true)).toBe(true);
+    expect(inDeadband(11, true)).toBe(false);
   });
 
   it('ticks faster, higher and further to the side as the error grows', () => {
-    const small = tickParams(20);
-    const big = tickParams(170);
-    expect(small.rateHz).toBeGreaterThanOrEqual(1);
+    const small = tickParams(12);
+    const big = tickParams(80);
+    expect(small.rateHz).toBeGreaterThanOrEqual(2);
+    expect(tickParams(90).rateHz).toBeCloseTo(8);
     expect(tickParams(180).rateHz).toBeCloseTo(8);
     expect(big.rateHz).toBeGreaterThan(small.rateHz);
     expect(big.pitchHz).toBeGreaterThan(small.pitchHz);

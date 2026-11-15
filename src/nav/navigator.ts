@@ -28,6 +28,8 @@ const POINT_ARRIVE_M = 4;
 const OFF_ROUTE_M = 25;
 const OFF_ROUTE_MS = 8000;
 const ENTRANCE_REACHED_M = 5;
+/** A queued turn instruction older than this is out of date (the user kept walking); drop it. */
+const NAV_MAX_AGE_MS = 20_000;
 
 export type Destination = { ll: LonLat; label: string; buildingId?: string };
 
@@ -245,7 +247,7 @@ async function reroute(): Promise<void> {
   rerouting = true;
   lastRerouteAt = Date.now();
   const gen = generation;
-  announce('Rerouting.');
+  announce('Rerouting.', 'Navigation update', { key: 'nav', maxAgeMs: NAV_MAX_AGE_MS });
   try {
     const routes = await getRoutes(toLonLat(pack, pos), nav.destLL, { fresh: true });
     if (gen !== generation) return;
@@ -258,7 +260,7 @@ async function reroute(): Promise<void> {
     setNav({ ...current, route, entrance: null, stepIndex: Math.min(1, route.steps.length - 1), reportIds: chosen.reports.map((r) => r.id) });
     tick();
     const next = route.steps[0];
-    if (next) announce(`${next.text}. ${metersPhrase(route.totalM)} to go.`);
+    if (next) announce(`${next.text}. ${metersPhrase(route.totalM)} to go.`, 'Navigation update', { key: 'nav', maxAgeMs: NAV_MAX_AGE_MS });
   } catch (err) {
     console.warn('[nav] reroute failed', err);
     // Keep the old route and ticks; try again after the debounce.
@@ -285,7 +287,7 @@ export function tick(now = Date.now()): void {
   if (nav.kind === 'point' || !nav.route) {
     const d = dist(pos, nav.dest);
     if (d <= POINT_ARRIVE_M) {
-      announce(`${nav.label} is right here.`);
+      announce(`${nav.label} is right here.`, 'Navigation update', { key: 'nav' });
       stopNavigation();
       return;
     }
@@ -303,7 +305,7 @@ export function tick(now = Date.now()): void {
     if (d <= ENTRANCE_REACHED_M || left) {
       setNav({ ...nav, entrance: { ...nav.entrance, reached: true } });
       const first = route.steps[0];
-      if (first) announce(`You are at the exit. ${first.text}.`);
+      if (first) announce(`You are at the exit. ${first.text}.`, 'Navigation update', { key: 'nav', maxAgeMs: NAV_MAX_AGE_MS });
       tick(now);
       return;
     }
@@ -316,7 +318,7 @@ export function tick(now = Date.now()): void {
   const remaining = route.totalM - proj.along;
 
   if (dist(pos, nav.dest) <= ARRIVE_M || (remaining <= ARRIVE_M && proj.dist <= 15)) {
-    announce(`You have arrived at ${nav.label}.`);
+    announce(`You have arrived at ${nav.label}.`, 'Navigation update', { key: 'nav' });
     stopNavigation();
     return;
   }
@@ -336,10 +338,14 @@ export function tick(now = Date.now()): void {
     if (d <= ANNOUNCE_NEAR_M && !saidNear.has(stepIndex)) {
       saidNear.add(stepIndex);
       saidFar.add(stepIndex);
-      if (!isArrival) announce(`${step.text} now.`);
+      if (!isArrival) announce(`${step.text} now.`, 'Navigation update', { key: 'nav', maxAgeMs: NAV_MAX_AGE_MS });
     } else if (d <= ANNOUNCE_FAR_M && d > ANNOUNCE_NEAR_M + 4 && !saidFar.has(stepIndex)) {
       saidFar.add(stepIndex);
-      announce(isArrival ? `In ${metersPhrase(d)}, you will arrive at ${nav.label}.` : `In ${metersPhrase(d)}, ${lowerFirst(step.text)}.`);
+      announce(
+        isArrival ? `In ${metersPhrase(d)}, you will arrive at ${nav.label}.` : `In ${metersPhrase(d)}, ${lowerFirst(step.text)}.`,
+        'Navigation update',
+        { key: 'nav', maxAgeMs: NAV_MAX_AGE_MS },
+      );
     }
   }
 

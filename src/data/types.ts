@@ -11,8 +11,7 @@ export type FeatureKind =
   | 'toilets'
   | 'bus_stop'
   | 'entrance'
-  | 'picnic_table'
-  | 'tree';
+  | 'picnic_table';
 
 export type PackBuilding = {
   id: string;

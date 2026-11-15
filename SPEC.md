@@ -183,8 +183,8 @@ GPS indoors is often 20–60 m off or stale. Browsers can't access Wi-Fi RTT or 
 
 **Feedback** (`src/feedback`):
 - error = |angleDiff(heading, targetBearing)|.
-- Deadband ±15°: silent, with a soft confirmation chime when entering the deadband.
-- 15–180°: tick rate rises from 1 Hz to 8 Hz with error. The tick is a short Web Audio oscillator blip, **stereo-panned toward the side the user should turn** (pan = sign(diff) × min(1, error/90)), with pitch rising slightly as error grows.
+- Deadband ±8° (left only past ±10°): silent, with a soft confirmation chime when entering the deadband.
+- 8–90°: tick rate rises from 2 Hz to 8 Hz with error, and stays at 8 Hz beyond 90°. The tick is a short Web Audio oscillator blip, **stereo-panned toward the side the user should turn** (pan = sign(diff) × min(1, error/90)), with pitch rising slightly as error grows.
 - Android: `navigator.vibrate` pulses in sync with ticks; pulse length grows with error.
 - iOS: optionally fire the hidden `<input type="checkbox" switch>` haptic trick on each tick (a short tap only); feature-flag it, off by default.
 - Duck tick volume while Gemini is speaking.
@@ -259,7 +259,7 @@ Seed the cluster (`scripts/seed-atlas.ts`) with 3–4 realistic reports around t
 **Audio**
 - Mic: `getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })` → AudioWorklet → downsample to **16 kHz mono PCM16** → `sendRealtimeInput({ audio })` in ~100 ms chunks.
 - Speaker: the model returns **24 kHz PCM16**. Queue chunks into an AudioWorklet or scheduled buffer playback. On interruption (user starts talking, `interrupted` event), flush the queue immediately.
-- Recommend earbuds for the demo; also show a push-to-talk button as a fallback in a loud room.
+- Recommend earbuds for the demo; switch to tap-to-talk as a fallback in a loud room.
 
 **Video**
 - Camera mode: grab a frame about once a second from the `<video>` element, downscale to ~768 px on the long side, encode as JPEG ~0.6 quality, `sendRealtimeInput({ video })`.
@@ -312,12 +312,12 @@ Handle `toolCall` messages by running the matching function and replying with `s
 
 1. **Start:** one huge "Start" button (needed for iOS permission prompts). Requests, in one gesture chain: orientation + motion permission (iOS), camera + mic, geolocation, `AudioContext.resume()`, Screen Wake Lock. Explain each permission in one line and announce it with an `aria-live` region.
 2. **Main screen = full-screen camera feed**, edge to edge.
-   - **Bottom center: a large X-ray button** (at least 72 px tall, high contrast, labeled "X-ray view" for screen readers). Tapping it swaps the camera for the x-ray scene; the same button becomes "Camera" to switch back. Double-tap and voice ("switch to x-ray") also work.
+   - **X-ray is the default view.** A "Camera view" switch in Settings swaps to the camera; double-tap and voice ("switch to camera") also work. The live hazard check (Gemma, every 3–10 s, in both views) switches to the camera while a hazard is ahead and back to x-ray once the path is clear, unless the user changed the view in the meantime.
    - **Minimap: top-right corner overlay** (about 30% of the width, rounded, semi-opaque border), heading-up, showing position, σ circle, route, features and reports. Tap to expand to full screen; tap again to shrink.
-   - **Talk control:** the whole screen outside the buttons works as push-to-talk when the room is loud; hands-free is the default.
-   - **Captions strip** above the X-ray button showing live transcripts (large text, togglable).
+   - **Talk control:** hands-free is the default. Tap-to-talk (Settings, or say "stop listening"): one tap on the mic button opens the mic with a rising tone, it closes by itself when the guide answers or the user pauses (falling tone), and ~0.5 s of pre-roll keeps the first words. Tapping while the guide speaks cuts it off. Optional headset play/pause button.
+   - **Captions strip** above the bottom dock showing live transcripts (large text, togglable).
    - **Status line** at the top-left: indoor/outdoor, location accuracy, target + distance.
-   - Everything is reachable with VoiceOver/TalkBack, with a logical focus order (X-ray button first), and state changes are announced via `aria-live`.
+   - Everything is reachable with VoiceOver/TalkBack, with a logical focus order, and state changes are announced via `aria-live`.
 4. **Dev simulator (`?sim=1`)** — essential for building without walking around:
    - Click the map to set position; a slider or drag for heading; buttons to "walk" 1 step.
    - Fake GPS accuracy (good / indoor-bad), and replay of a recorded route.

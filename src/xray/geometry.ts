@@ -1,7 +1,9 @@
 // Geometry builders for the x-ray scene. Scene axes: ENU x → x, up → y, ENU y (north) → −z.
+// Everything stands on the terrain: `height` arguments are meters above the ground at that point.
 
 import * as THREE from 'three';
 import type { BuildingX, WayX } from '../data/pack';
+import { groundAt } from '../data/terrain';
 import type { WayKind } from '../data/types';
 import type { Vec2 } from '../geo';
 
@@ -10,7 +12,62 @@ export type P3 = [number, number, number];
 export const EYE_HEIGHT_M = 1.6;
 
 export function toScene(p: Vec2, height = 0): P3 {
-  return [p.x, height, -p.y];
+  return [p.x, groundAt(p) + height, -p.y];
+}
+
+/**
+ * Ground lines longer than this are split so they follow the terrain instead of cutting through hills or floating
+ * over dips. Half the terrain's 5 m cell: a span then crosses at most one fold of the ground mesh.
+ */
+const DRAPE_STEP_M = 2.5;
+
+/** A polyline with extra points so no span is longer than DRAPE_STEP_M. */
+export function densify(line: readonly Vec2[], step = DRAPE_STEP_M): Vec2[] {
+  const out: Vec2[] = [];
+  for (let i = 0; i < line.length; i++) {
+    const a = line[i];
+    out.push(a);
+    const b = line[i + 1];
+    if (!b) break;
+    const n = Math.floor(Math.hypot(b.x - a.x, b.y - a.y) / step);
+    for (let k = 1; k <= n; k++) out.push({ x: a.x + ((b.x - a.x) * k) / (n + 1), y: a.y + ((b.y - a.y) * k) / (n + 1) });
+  }
+  return out;
+}
+
+const bases = new WeakMap<BuildingX, number>();
+
+/**
+ * Scene height of a building's floor: the highest ground along its walls. On a slope the whole building then stands
+ * on the ground and its downhill walls reach down to meet it, instead of the uphill side sitting inside the hill
+ * (which the lowest-corner rule did for hundreds of buildings, South College among them).
+ */
+export function buildingBase(b: BuildingX): number {
+  let base = bases.get(b);
+  if (base === undefined) {
+    base = -Infinity;
+    for (const p of drapedRing(b.outer)) base = Math.max(base, groundAt(p));
+    if (!Number.isFinite(base)) base = 0;
+    bases.set(b, base);
+  }
+  return base;
+}
+
+/**
+ * A closed outline with extra points along each wall (no span longer than DRAPE_STEP_M), so a wall's bottom edge can
+ * follow the ground between corners instead of running straight from corner to corner (which left buildings
+ * floating over dips or sunk into rises on a slope). The first point is not repeated at the end.
+ */
+function drapedRing(ring: readonly Vec2[]): Vec2[] {
+  if (ring.length < 2) return [...ring];
+  const out = densify([...ring, ring[0]]);
+  out.pop();
+  return out;
+}
+
+/** Scene height of a building's roof. */
+export function buildingTop(b: BuildingX): number {
+  return buildingBase(b) + b.heightM;
 }
 
 /** True when the outline bends at vertex i (so a vertical edge belongs there, as EdgesGeometry would draw). */
@@ -26,17 +83,20 @@ function isCorner(ring: readonly Vec2[], i: number): boolean {
   return Math.abs(Math.atan2(cross, dot)) > 0.2; // ~11°
 }
 
-/** Wireframe of an extruded footprint as line-segment pairs: floor outline, roof outline, corner verticals. */
+/** Wireframe of an extruded footprint as line-segment pairs: ground outline, flat roof outline, corner verticals. */
 export function buildingEdgePoints(b: BuildingX, out: P3[] = []): P3[] {
+  const top = buildingTop(b);
   for (const ring of [b.outer, ...b.holes]) {
     const n = ring.length;
     for (let i = 0; i < n; i++) {
       const p = ring[i];
       const q = ring[(i + 1) % n];
-      out.push(toScene(p, 0), toScene(q, 0));
-      out.push(toScene(p, b.heightM), toScene(q, b.heightM));
-      if (isCorner(ring, i)) out.push(toScene(p, 0), toScene(p, b.heightM));
+      out.push([p.x, top, -p.y], [q.x, top, -q.y]);
+      if (isCorner(ring, i)) out.push(toScene(p), [p.x, top, -p.y]);
     }
+    // Bottom edge: along the ground.
+    const ground = drapedRing(ring);
+    for (let i = 0; i < ground.length; i++) out.push(toScene(ground[i]), toScene(ground[(i + 1) % ground.length]));
   }
   return out;
 }
@@ -50,17 +110,22 @@ export function floorLinePoints(b: BuildingX, out: P3[] = []): P3[] {
   if (storeys < 1) return out;
   // Towers would turn into a solid block of lines: draw every 2nd or 3rd storey instead.
   const every = Math.ceil(storeys / MAX_FLOOR_LINES);
+  const base = buildingBase(b);
   for (let k = every; k <= storeys; k += every) {
-    const h = k * STOREY_M;
+    const h = base + k * STOREY_M;
     const ring = b.outer;
-    for (let i = 0; i < ring.length; i++) out.push(toScene(ring[i], h), toScene(ring[(i + 1) % ring.length], h));
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i];
+      const q = ring[(i + 1) % ring.length];
+      out.push([p.x, h, -p.y], [q.x, h, -q.y]);
+    }
   }
   return out;
 }
 
 /** A closed loop (first point repeated) just above the floor, for the containing building's floor outline. */
-export function floorOutline(ring: readonly Vec2[], height = 0.05): P3[] {
-  const pts = ring.map((p) => toScene(p, height));
+export function floorOutline(ring: readonly Vec2[], base: number, height = 0.05): P3[] {
+  const pts: P3[] = ring.map((p) => [p.x, base + height, -p.y]);
   if (pts.length) pts.push(pts[0]);
   return pts;
 }
@@ -69,14 +134,16 @@ export function floorOutline(ring: readonly Vec2[], height = 0.05): P3[] {
 export function wallsGeometry(buildings: readonly BuildingX[]): THREE.BufferGeometry {
   const pos: number[] = [];
   for (const b of buildings) {
-    const ring = b.outer;
-    const h = b.heightM;
+    const ring = drapedRing(b.outer);
+    const h = buildingTop(b);
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i];
       const q = ring[(i + 1) % ring.length];
+      const gp = groundAt(p);
+      const gq = groundAt(q);
       // two triangles: (p0, q0, q1) and (p0, q1, p1)
-      pos.push(p.x, 0, -p.y, q.x, 0, -q.y, q.x, h, -q.y);
-      pos.push(p.x, 0, -p.y, q.x, h, -q.y, p.x, h, -p.y);
+      pos.push(p.x, gp, -p.y, q.x, gq, -q.y, q.x, h, -q.y);
+      pos.push(p.x, gp, -p.y, q.x, h, -q.y, p.x, h, -p.y);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -85,12 +152,13 @@ export function wallsGeometry(buildings: readonly BuildingX[]): THREE.BufferGeom
 }
 
 const WAY_STYLE: Record<WayKind, { width: number; lift: number; color: [number, number, number] }> = {
-  road: { width: 5, lift: 0.01, color: [0.085, 0.095, 0.12] },
-  footway: { width: 1.8, lift: 0.03, color: [0.2, 0.3, 0.42] },
-  sidewalk: { width: 1.6, lift: 0.03, color: [0.2, 0.3, 0.42] },
-  path: { width: 1.5, lift: 0.03, color: [0.16, 0.24, 0.34] },
-  steps: { width: 1.8, lift: 0.04, color: [0.95, 0.6, 0.25] },
-  crossing: { width: 2.2, lift: 0.05, color: [0.9, 0.92, 0.95] },
+  // Low-vision palette: roads a dark cyan-grey, walkways mid cyan, steps yellow (like stair nosings), crossings white.
+  road: { width: 5, lift: 0.01, color: [0.03, 0.1, 0.11] },
+  footway: { width: 1.8, lift: 0.03, color: [0.0, 0.42, 0.48] },
+  sidewalk: { width: 1.6, lift: 0.03, color: [0.0, 0.42, 0.48] },
+  path: { width: 1.5, lift: 0.03, color: [0.0, 0.3, 0.35] },
+  steps: { width: 1.8, lift: 0.04, color: [1.0, 0.83, 0.0] },
+  crossing: { width: 2.2, lift: 0.05, color: [0.95, 0.97, 0.97] },
 };
 const STRIPE_M = 0.6;
 const TREAD_M = 0.32;
@@ -100,21 +168,25 @@ export function waysGeometry(ways: readonly WayX[]): THREE.BufferGeometry {
   const pos: number[] = [];
   const col: number[] = [];
 
-  const quad = (a: Vec2, b: Vec2, nx: number, ny: number, half: number, y: number, c: [number, number, number]) => {
+  const quad = (a: Vec2, b: Vec2, nx: number, ny: number, half: number, lift: number, c: [number, number, number]) => {
     const ax1 = a.x + nx * half, ay1 = a.y + ny * half;
     const ax2 = a.x - nx * half, ay2 = a.y - ny * half;
     const bx1 = b.x + nx * half, by1 = b.y + ny * half;
     const bx2 = b.x - nx * half, by2 = b.y - ny * half;
-    pos.push(ax1, y, -ay1, ax2, y, -ay2, bx2, y, -by2);
-    pos.push(ax1, y, -ay1, bx2, y, -by2, bx1, y, -by1);
+    // Ribbon follows the ground along its length (the ends are close enough together to be flat across).
+    const ya = groundAt(a) + lift;
+    const yb = groundAt(b) + lift;
+    pos.push(ax1, ya, -ay1, ax2, ya, -ay2, bx2, yb, -by2);
+    pos.push(ax1, ya, -ay1, bx2, yb, -by2, bx1, yb, -by1);
     for (let i = 0; i < 6; i++) col.push(c[0], c[1], c[2]);
   };
 
   for (const w of ways) {
     const style = WAY_STYLE[w.kind];
-    for (let i = 0; i < w.pts.length - 1; i++) {
-      const a = w.pts[i];
-      const b = w.pts[i + 1];
+    const pts = densify(w.pts);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
       const len = Math.hypot(b.x - a.x, b.y - a.y);
       if (len < 0.05) continue;
       const dx = (b.x - a.x) / len;
@@ -144,8 +216,8 @@ export function waysGeometry(ways: readonly WayX[]): THREE.BufferGeometry {
 export function routeTube(line: readonly Vec2[], radius: number, height = 0.35): THREE.TubeGeometry | null {
   // Drop repeated points: a zero-length span breaks the curve's frames.
   const pts: THREE.Vector3[] = [];
-  for (const p of line) {
-    const v = new THREE.Vector3(p.x, height, -p.y);
+  for (const p of densify(line)) {
+    const v = new THREE.Vector3(p.x, groundAt(p) + height, -p.y);
     if (!pts.length || pts[pts.length - 1].distanceToSquared(v) > 0.01) pts.push(v);
   }
   if (pts.length < 2) return null;

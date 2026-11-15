@@ -44,7 +44,8 @@ export type NavState = {
   reportIds: string[];
 };
 
-export type Caption = { id: number; role: 'user' | 'agent' | 'app'; text: string; final: boolean };
+/** `at`: when the caption last changed (ms), so old lines can fade out. */
+export type Caption = { id: number; role: 'user' | 'agent' | 'app'; text: string; final: boolean; at: number };
 
 export type Settings = {
   captions: boolean;
@@ -55,10 +56,12 @@ export type Settings = {
   highContrast: boolean;
   /** Distances in meters instead of feet. */
   metric: boolean;
+  /** A headset's play/pause button starts and stops talking. */
+  headsetButton: boolean;
 };
 
 const SETTINGS_KEY = 'wayfinder.settings';
-const defaultSettings: Settings = { captions: true, largeText: false, simplify: false, handsFree: true, iosHaptic: false, highContrast: false, metric: false };
+const defaultSettings: Settings = { captions: true, largeText: false, simplify: false, handsFree: true, iosHaptic: false, highContrast: false, metric: false, headsetButton: false };
 
 function loadSettings(): Settings {
   try {
@@ -91,7 +94,7 @@ export type State = {
 
   geminiStatus: GeminiStatus;
   speaking: boolean;
-  /** Push-to-talk held (only matters when hands-free is off). */
+  /** Tap-to-talk turn open: the microphone is sent to the guide (only matters when hands-free is off). */
   talking: boolean;
   captions: Caption[];
 
@@ -113,7 +116,7 @@ let captionSeq = 0;
 export const useStore = create<State>()((set) => ({
   sim: typeof location !== 'undefined' && new URLSearchParams(location.search).get('sim') === '1',
   started: false,
-  mode: 'camera',
+  mode: 'xray',
   pack: null,
   packError: null,
 
@@ -156,11 +159,11 @@ export const useStore = create<State>()((set) => ({
       const last = s.captions[s.captions.length - 1];
       // Transcripts stream in fragments: extend the open line for the same speaker.
       if (last && last.role === role && !last.final) {
-        const merged = { ...last, text: last.text + text, final };
+        const merged = { ...last, text: last.text + text, final, at: Date.now() };
         return { captions: [...s.captions.slice(0, -1), merged] };
       }
       const closed = s.captions.map((c) => (c.final ? c : { ...c, final: true }));
-      return { captions: [...closed, { id: ++captionSeq, role, text, final }].slice(-6) };
+      return { captions: [...closed, { id: ++captionSeq, role, text, final, at: Date.now() }].slice(-6) };
     }),
 
   finishCaptions: () => set((s) => ({ captions: s.captions.map((c) => (c.final ? c : { ...c, final: true })) })),

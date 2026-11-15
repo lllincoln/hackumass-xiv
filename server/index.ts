@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { tokenRoutes } from './token';
 import { geocodeRoutes } from './geocode';
 import { reportRoutes } from './reports';
+import { hazardRoutes } from './hazard';
 import { closeDb, dbMode } from './db';
 
 const app = new Hono();
@@ -18,6 +19,7 @@ app.get('/api/health', (c) =>
 app.route('/api', tokenRoutes);
 app.route('/api', geocodeRoutes);
 app.route('/api', reportRoutes);
+app.route('/api', hazardRoutes);
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
 const port = Number(process.env.PORT ?? 8787);

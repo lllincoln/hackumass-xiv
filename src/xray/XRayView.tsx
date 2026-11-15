@@ -1,6 +1,6 @@
 // X-ray mode: a wireframe of the surroundings from OpenStreetMap that follows the phone's orientation,
-// so the user can "see through" walls. Pale lines on near-black with one amber accent for the route and target:
-// high luminance contrast without saturated colors fighting each other.
+// so the user can "see through" walls. Low-vision palette on black: yellow for the big structures (buildings) and
+// hazards, cyan for the ground layer (walkways, terrain, features), white for the route, target and the user's building.
 
 import { Line } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
@@ -13,19 +13,24 @@ import { angleDiff, bearingENU, dist, type Vec2 } from '../geo';
 import { orientation } from '../sensors/orientation';
 import { useStore } from '../store';
 import { distanceShort } from '../units';
-import { BACKGROUND, CompassRing, GroundGrid, HAZE, RouteArrows, SkyDome } from './extras';
-import { buildingEdgePoints, EYE_HEIGHT_M, floorLinePoints, floorOutline, routeTube, toScene, wallsGeometry, waysGeometry, type P3 } from './geometry';
+import { groundAt } from '../data/terrain';
+import { BACKGROUND, GroundGrid, HAZE, RouteArrows, SkyDome } from './extras';
+import { buildingBase, buildingEdgePoints, buildingTop, EYE_HEIGHT_M, floorLinePoints, floorOutline, routeTube, toScene, wallsGeometry, waysGeometry, type P3 } from './geometry';
 import { advanceGlide, shown } from './glide';
 import { labelTexture } from './labels';
+import { Terrain } from './terrain';
 
 const RAD = Math.PI / 180;
-/** Buildings and other context. */
-const LINE = '#a9d1f7';
+/** Buildings, and hazard reports (caution yellow). */
+const LINE = '#ffd400';
 /** The building the user is in. */
 const WHITE = '#ffffff';
-/** Where to go: route, target, distance. */
-const ACCENT = '#ffc53d';
-const OK = '#5ee6a8';
+/** Where to go: route, target, distance. White, so it stands apart from yellow buildings and cyan ground. */
+const ACCENT = '#ffffff';
+/** The ground layer's cyan: the route's glow and the next-turn beacon. */
+const CYAN = '#00e5ff';
+/** Helpful things (exits, ramps, automatic doors): a lighter cyan, distinct from building lines. */
+const OK = '#7ff6ff';
 /** Storey lines are only drawn this close: further away they would just be noise. */
 const FLOOR_LINE_RANGE_M = 130;
 const BUILDING_RANGE_M = 250;
@@ -65,7 +70,14 @@ function CameraRig() {
   useFrame((_, dt) => {
     // Follow the glided position (see glide.ts), not the raw estimate, so walking looks continuous.
     advanceGlide(dt);
-    if (shown.ready) camera.position.set(shown.x, EYE_HEIGHT_M, -shown.y);
+    // Eye height above the ground under the user (terrain), so hills rise and fall around them. Indoors, above the
+    // building's floor, which on a slope can be higher than the ground beneath it.
+    if (shown.ready) {
+      const { pack, buildingId } = useStore.getState();
+      const inside = buildingId ? pack?.buildingById.get(buildingId) : undefined;
+      const floor = inside ? Math.max(groundAt(shown), buildingBase(inside)) : groundAt(shown);
+      camera.position.set(shown.x, floor + EYE_HEIGHT_M, -shown.y);
+    }
 
     // Standard deviceorientation → camera quaternion. Without a sensor, look level along the known heading.
     const o = orientation;
@@ -150,7 +162,10 @@ function Buildings() {
 
   const containing = buildingId ? pack?.buildingById.get(buildingId) : undefined;
   const containingEdges = useMemo(() => (containing ? buildingEdgePoints(containing) : []), [containing]);
-  const floor = useMemo(() => (containing ? [containing.outer, ...containing.holes].map((r) => floorOutline(r)) : []), [containing]);
+  const floor = useMemo(
+    () => (containing ? [containing.outer, ...containing.holes].map((r) => floorOutline(r, buildingBase(containing))) : []),
+    [containing],
+  );
 
   return (
     <>
@@ -185,7 +200,7 @@ function BuildingLabels() {
   return (
     <>
       {labels.map(({ b }) => (
-        <Label key={b.id} text={b.name as string} position={toScene(b.centroid, b.heightM + 3)} color={LINE} />
+        <Label key={b.id} text={b.name as string} position={[b.centroid.x, buildingTop(b) + 3, -b.centroid.y]} color={LINE} />
       ))}
     </>
   );
@@ -225,19 +240,18 @@ const FEATURE_LABELS: Record<FeatureKind, string> = {
   bus_stop: 'Bus stop',
   entrance: 'Entrance',
   picnic_table: 'Picnic table',
-  tree: 'Tree',
 };
 
 const FEATURE_COLORS: Record<FeatureKind, string> = {
-  bench: '#f3d9a4',
-  trash: '#c9b8ff',
-  bike_parking: '#8fe3b0',
-  water: '#7cc4ff',
+  // One family (light cyan) so the scene keeps to three colors; shapes and labels tell the kinds apart.
+  bench: '#7ff6ff',
+  trash: '#7ff6ff',
+  bike_parking: '#7ff6ff',
+  water: '#7ff6ff',
   toilets: '#ffffff',
-  bus_stop: '#ffb38a',
+  bus_stop: '#ffd400',
   entrance: '#ffffff',
-  picnic_table: '#f3d9a4',
-  tree: '#2f5e49',
+  picnic_table: '#7ff6ff',
 };
 
 // Shared primitives, created once.
@@ -255,7 +269,6 @@ const GEO = {
   water: new THREE.CylinderGeometry(0.18, 0.18, 1.0, 8),
   box: new THREE.BoxGeometry(0.9, 0.9, 0.9),
   table: new THREE.BoxGeometry(1.8, 0.75, 1.5),
-  tree: new THREE.ConeGeometry(1.4, 5, 6),
   pyramid: new THREE.ConeGeometry(0.6, 1.3, 4),
   beam: new THREE.CylinderGeometry(0.5, 0.5, 1, 10, 1, true),
 };
@@ -285,9 +298,9 @@ function FeatureMesh({ f }: { f: FeatureX }) {
         </group>
       );
     case 'trash':
-      return <mesh geometry={GEO.trash} material={m} position={[p[0], 0.45, p[2]]} />;
+      return <mesh geometry={GEO.trash} material={m} position={[p[0], p[1] + 0.45, p[2]]} />;
     case 'bike_parking':
-      return <mesh geometry={GEO.bike} material={m} position={[p[0], 0.02, p[2]]} rotation={[0, turn, 0]} />;
+      return <mesh geometry={GEO.bike} material={m} position={[p[0], p[1] + 0.02, p[2]]} rotation={[0, turn, 0]} />;
     case 'bus_stop':
       return (
         <group position={p}>
@@ -308,13 +321,11 @@ function FeatureMesh({ f }: { f: FeatureX }) {
         </group>
       );
     case 'water':
-      return <mesh geometry={GEO.water} material={m} position={[p[0], 0.5, p[2]]} />;
+      return <mesh geometry={GEO.water} material={m} position={[p[0], p[1] + 0.5, p[2]]} />;
     case 'toilets':
-      return <mesh geometry={GEO.box} material={m} position={[p[0], 0.45, p[2]]} />;
+      return <mesh geometry={GEO.box} material={m} position={[p[0], p[1] + 0.45, p[2]]} />;
     case 'picnic_table':
-      return <mesh geometry={GEO.table} material={m} position={[p[0], 0.375, p[2]]} rotation={[0, turn, 0]} />;
-    case 'tree':
-      return <mesh geometry={GEO.tree} material={m} position={[p[0], 2.5, p[2]]} />;
+      return <mesh geometry={GEO.table} material={m} position={[p[0], p[1] + 0.375, p[2]]} rotation={[0, turn, 0]} />;
   }
 }
 
@@ -330,7 +341,7 @@ function Features() {
     if (!pack || !pos) return [];
     let list = featuresWithin(pack, pos, lowPerf ? FEATURE_LABEL_RANGE_M : FEATURE_RANGE_M);
     if (lowPerf) {
-      list = list.filter(({ feature }) => feature.kind !== 'tree' && Math.abs(angleDiff(orientation.heading, bearingENU(pos, feature.pos))) < 60);
+      list = list.filter(({ feature }) => Math.abs(angleDiff(orientation.heading, bearingENU(pos, feature.pos))) < 60);
     }
     return list.slice(0, lowPerf ? 60 : 220);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,7 +352,7 @@ function Features() {
       {near.map(({ feature, dist: d }) => (
         <group key={feature.id}>
           <FeatureMesh f={feature} />
-          {d <= FEATURE_LABEL_RANGE_M && feature.kind !== 'tree' && (
+          {d <= FEATURE_LABEL_RANGE_M && (
             <Label
               text={feature.name ?? FEATURE_LABELS[feature.kind]}
               position={toScene(feature.pos, feature.kind === 'entrance' ? 2.8 : 1.7)}
@@ -360,7 +371,8 @@ function Features() {
 function ReportMarker({ report, at, onRoute }: { report: ReportDTO; at: Vec2; onRoute: boolean }) {
   const ref = useRef<THREE.Mesh>(null);
   const helpful = HELPFUL_KINDS.includes(report.kind);
-  const color = helpful ? OK : report.kind === 'construction' || report.kind === 'blocked_sidewalk' ? '#ff6b5e' : '#ffa24d';
+  // Hazards in caution yellow; helpful reports in light cyan.
+  const color = helpful ? OK : LINE;
   useFrame(({ clock }) => {
     if (!ref.current) return;
     // Reports on the active route pulse.
@@ -393,7 +405,7 @@ function Reports() {
 
 function Beam({ at, color, radius, height, opacity }: { at: Vec2; color: string; radius: number; height: number; opacity: number }) {
   return (
-    <mesh geometry={GEO.beam} position={[at.x, height / 2, -at.y]} scale={[radius / 0.5, height, radius / 0.5]}>
+    <mesh geometry={GEO.beam} position={[at.x, groundAt(at) + height / 2, -at.y]} scale={[radius / 0.5, height, radius / 0.5]}>
       <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} side={THREE.DoubleSide} fog={false} />
     </mesh>
   );
@@ -419,14 +431,14 @@ function RouteLayer() {
       )}
       {glow && (
         <mesh geometry={glow}>
-          <meshBasicMaterial color={ACCENT} transparent opacity={0.18} depthWrite={false} />
+          <meshBasicMaterial color={CYAN} transparent opacity={0.3} depthWrite={false} />
         </mesh>
       )}
       <RouteArrows />
       {/* Beacon at the target, with its distance. */}
       <Beam at={nav.dest} color={ACCENT} radius={0.6} height={90} opacity={0.4} />
       <Label text={`${nav.label} · ${distanceShort(nav.remainingM, metric)}`} position={toScene(nav.dest, 6)} color={ACCENT} size={0.055} emphasis />
-      {nextStep && <Beam at={nextStep.pos} color="#ffffff" radius={0.25} height={30} opacity={0.35} />}
+      {nextStep && <Beam at={nextStep.pos} color={CYAN} radius={0.25} height={30} opacity={0.4} />}
       {exit && (
         <>
           <Beam at={exit} color={OK} radius={0.35} height={30} opacity={0.45} />
@@ -449,7 +461,7 @@ function SigmaRing() {
     }, [sigma]),
   );
   useFrame(() => {
-    if (shown.ready && ref.current) ref.current.position.set(shown.x, 0.08, -shown.y);
+    if (shown.ready && ref.current) ref.current.position.set(shown.x, groundAt(shown) + 0.08, -shown.y);
   });
   return (
     <mesh ref={ref} geometry={geometry} rotation={[-Math.PI / 2, 0, 0]}>
@@ -479,11 +491,11 @@ export default function XRayView({ active }: { active: boolean }) {
         <Buildings />
         <RouteLayer />
         <SigmaRing />
-        <CompassRing />
         <Reports />
         {!simplify && (
           <>
-            <GroundGrid />
+            {/* Real ground when terrain data is loaded; otherwise the flat grid. */}
+            <Terrain fallback={<GroundGrid />} />
             <Ground />
             <Features />
             <BuildingLabels />

@@ -8,3 +8,4 @@ dist/
 caddy_data/
 caddy_config/
 scripts/.overpass-cache.json
+scripts/.terrain-cache/

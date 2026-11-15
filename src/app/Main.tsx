@@ -2,10 +2,12 @@ import { lazy, Suspense, useEffect, useRef, useState, type PointerEvent as React
 import { useStore, type GeminiStatus, type Settings } from '../store';
 import { distanceShort } from '../units';
 import { CameraView } from './CameraView';
+import { CompassBar } from './CompassBar';
 import { DevSim } from './DevSim';
-import { ArrowIcon, CameraIcon, MicIcon, SlidersIcon, XRayIcon } from './icons';
+import { ArrowIcon, MicIcon, SlidersIcon } from './icons';
 import { Minimap } from './Minimap';
-import { toggleMode } from './mode';
+import { setMode, toggleMode } from './mode';
+import { toggleTalk } from './talk';
 
 // three.js lives in its own chunk, but the download starts right away (not on first use), and the scene is
 // mounted as soon as the main screen appears. Switching views is then just a reveal animation.
@@ -14,9 +16,7 @@ const XRayView = lazy(loadXRay);
 void loadXRay().catch(() => undefined);
 
 const DOUBLE_TAP_MS = 350;
-/** How long a finger must rest on the screen before hold-to-talk starts. */
-const HOLD_MS = 280;
-/** Movement beyond this before the hold registers means a drag, not a hold. */
+/** Movement beyond this means a drag, not a tap. */
 const MOVE_TOLERANCE_PX = 12;
 
 /** Only problems are shown: when the guide is working there is nothing to say about it. */
@@ -34,12 +34,17 @@ function StatusLine() {
   const problem = useStore((s) => GEMINI_PROBLEMS[s.geminiStatus]);
   const metric = useStore((s) => s.settings.metric);
 
+  // Accuracy at a glance: green within 5 m, amber within 15 m, red beyond.
+  const quality = sigma <= 5 ? 'good' : sigma <= 15 ? 'fair' : 'poor';
+
   return (
-    <div className="status glass" aria-label="Status">
-      <p className="status-place">{hasPos ? (building ?? (indoors ? 'Indoors' : 'Outdoors')) : 'Finding your location'}</p>
+    <div className="status" aria-label="Status">
+      <p className="status-place">{hasPos ? (building ?? (indoors ? 'Indoors' : 'Outdoors')) : 'Locating…'}</p>
       {hasPos && (
         <p className="status-meta">
-          {building && indoors ? 'Indoors · ' : ''}±{distanceShort(sigma, metric)}
+          <span className="status-accuracy" data-quality={quality} aria-hidden="true" />
+          <span className="nowrap">±{distanceShort(sigma, metric)}</span>
+          {building && indoors && <span className="nowrap">· Indoors</span>}
         </p>
       )}
       {problem && (
@@ -60,15 +65,33 @@ function StatusLine() {
   );
 }
 
+/** A caption stays this long after its last word arrives, then fades out over CAPTION_FADE_MS. */
+const CAPTION_HOLD_MS = 6000;
+const CAPTION_FADE_MS = 1000;
+
 function Captions() {
   const captions = useStore((s) => s.captions);
   const show = useStore((s) => s.settings.captions);
-  if (!show || captions.length === 0) return null;
+  const [now, setNow] = useState(() => Date.now());
+
+  const recent = captions.slice(-2).filter((c) => now - c.at < CAPTION_HOLD_MS + CAPTION_FADE_MS);
+  // Re-render while something is on screen, so lines start fading and then leave on time.
+  const live = show && recent.length > 0;
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [live]);
+  // A new or growing caption arrives: show it immediately instead of waiting for the next tick.
+  useEffect(() => setNow(Date.now()), [captions]);
+
+  if (!show || recent.length === 0) return null;
+  const fading = (c: (typeof recent)[number]) => now - c.at >= CAPTION_HOLD_MS;
   return (
     // aria-hidden: the guide already speaks these; a screen reader repeating them would talk over it.
-    <div className="captions glass" aria-hidden="true">
-      {captions.slice(-2).map((c) => (
-        <p key={c.id} className={`caption caption-${c.role}`}>
+    <div className={`captions glass ${recent.every(fading) ? 'captions-fading' : ''}`} aria-hidden="true">
+      {recent.map((c) => (
+        <p key={c.id} className={`caption caption-${c.role} ${fading(c) ? 'caption-fading' : ''}`}>
           <span className="caption-who">{c.role === 'user' ? 'You' : c.role === 'agent' ? 'Guide' : 'Wayfinder'}</span>
           {c.text}
         </p>
@@ -78,7 +101,8 @@ function Captions() {
 }
 
 const SWITCHES: { key: keyof Settings; title: string; detail: string; xrayOnly?: boolean }[] = [
-  { key: 'handsFree', title: 'Hands-free listening', detail: 'Off: hold anywhere on the screen to talk.' },
+  { key: 'handsFree', title: 'Hands-free listening', detail: 'Off: tap the microphone button to talk.' },
+  { key: 'headsetButton', title: 'Headset button', detail: 'Play/pause on headphones starts talking. Not every phone supports it.' },
   { key: 'captions', title: 'Captions', detail: 'Show what you and the guide say.' },
   { key: 'largeText', title: 'Large text', detail: 'Bigger captions, status and x-ray labels.' },
   { key: 'highContrast', title: 'High contrast', detail: 'Solid black panels with white outlines.' },
@@ -89,6 +113,7 @@ const SWITCHES: { key: keyof Settings; title: string; detail: string; xrayOnly?:
 function SettingsSheet({ onClose }: { onClose: () => void }) {
   const settings = useStore((s) => s.settings);
   const setSetting = useStore((s) => s.setSetting);
+  const mode = useStore((s) => s.mode);
   const doneRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -103,6 +128,18 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
       <section className="sheet glass" role="dialog" aria-modal="true" aria-label="Settings">
         <div className="sheet-grip" aria-hidden="true" />
         <h2>Settings</h2>
+        <button
+          className="switch-row"
+          role="switch"
+          aria-checked={mode === 'camera'}
+          onClick={() => setMode(mode === 'camera' ? 'xray' : 'camera')}
+        >
+          <span className="switch-text">
+            <strong>Camera view</strong>
+            <span>Off: x-ray map. Turns on by itself while a hazard is ahead.</span>
+          </span>
+          <span className="switch-track" aria-hidden="true" />
+        </button>
         {SWITCHES.map(({ key, title, detail }) => (
           <button
             key={key}
@@ -132,13 +169,13 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
 export function Main() {
   const mode = useStore((s) => s.mode);
   const handsFree = useStore((s) => s.settings.handsFree);
-  const setSetting = useStore((s) => s.setSetting);
   const talking = useStore((s) => s.talking);
+  const speaking = useStore((s) => s.speaking);
   const isSim = useStore((s) => s.sim);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const lastTap = useRef(0);
 
-  // The "press and hold" reminder shows for a few seconds after switching to hold-to-talk, then gets out of the way.
+  // The "tap to talk" reminder shows for a few seconds after switching off hands-free, then gets out of the way.
   const [showHint, setShowHint] = useState(false);
   useEffect(() => {
     if (handsFree) return;
@@ -147,51 +184,20 @@ export function Main() {
     return () => clearTimeout(t);
   }, [handsFree]);
 
-  // The screen behind the controls: press and hold to talk (when hands-free is off), double-tap to switch views.
-  // Talking starts only once a finger has rested in place for HOLD_MS. A tap, a swipe, a press that began on a
-  // button, the map or any panel, or a second finger never starts it.
-  const hold = useRef<{ id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> | null; held: boolean } | null>(null);
-
-  const endHold = () => {
-    const h = hold.current;
-    hold.current = null;
-    if (h?.timer) clearTimeout(h.timer);
-    if (useStore.getState().talking) useStore.setState({ talking: false });
-    return h;
-  };
+  // The screen behind the controls: double-tap to switch views. Taps on buttons, the map or panels do not count,
+  // nor does a drag.
+  const down = useRef<{ id: number; x: number; y: number } | null>(null);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (hold.current) {
-      endHold(); // a second finger: this is a gesture, not a hold
-      return;
-    }
     if (!e.isPrimary || e.button !== 0) return;
     if ((e.target as Element).closest('button, a, input, select, textarea, [role="dialog"], .minimap, .sim')) return;
-    const h = { id: e.pointerId, x: e.clientX, y: e.clientY, timer: null as ReturnType<typeof setTimeout> | null, held: false };
-    hold.current = h;
-    if (!useStore.getState().settings.handsFree) {
-      h.timer = setTimeout(() => {
-        h.timer = null;
-        if (hold.current !== h) return;
-        h.held = true;
-        useStore.setState({ talking: true });
-        if ('vibrate' in navigator) navigator.vibrate(15);
-      }, HOLD_MS);
-    }
-  };
-
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const h = hold.current;
-    if (!h || h.id !== e.pointerId || h.held) return;
-    // Moved before the hold registered: the user is dragging or scrolling, not holding.
-    if (Math.hypot(e.clientX - h.x, e.clientY - h.y) > MOVE_TOLERANCE_PX) endHold();
+    down.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const h = hold.current;
-    if (!h || h.id !== e.pointerId) return;
-    endHold();
-    if (h.held) return; // that was talking, not a tap
+    const d = down.current;
+    down.current = null;
+    if (!d || d.id !== e.pointerId || Math.hypot(e.clientX - d.x, e.clientY - d.y) > MOVE_TOLERANCE_PX) return;
     const now = performance.now();
     if (now - lastTap.current < DOUBLE_TAP_MS) {
       lastTap.current = 0;
@@ -202,33 +208,30 @@ export function Main() {
   };
 
   const onPointerCancel = () => {
-    endHold();
+    down.current = null;
   };
 
-  // Mic button in hold-to-talk mode.
-  const stopTalking = () => {
-    if (useStore.getState().talking) useStore.setState({ talking: false });
+  const micLabel = handsFree ? (speaking ? 'Stop the guide' : 'Listening hands-free') : talking ? 'Stop listening' : 'Talk';
+  const onMic = () => {
+    if (handsFree && !speaking) {
+      useStore.getState().announce('Listening hands-free. Just speak. Tap-to-talk is in settings.');
+      return;
+    }
+    toggleTalk();
   };
 
   return (
     <main className="main">
-      {/* First in the DOM so it is the first thing VoiceOver / TalkBack reaches. */}
-      <button className="mode-button" onClick={toggleMode} aria-label={mode === 'camera' ? 'X-ray view' : 'Camera view'}>
-        {mode === 'camera' ? <XRayIcon /> : <CameraIcon />}
-        <span>{mode === 'camera' ? 'X-ray' : 'Camera'}</span>
-      </button>
-
       <div
         className={`stage ${talking ? 'stage-talking' : ''}`}
         data-mode={mode}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onPointerLeave={onPointerCancel}
         onContextMenu={(e) => e.preventDefault()}
       >
-        {/* Both views stay mounted; the x-ray layer is revealed in a circle growing out of the switch button. */}
+        {/* Both views stay mounted; the x-ray layer is revealed in a circle growing out of the middle of the screen. */}
         <div className="layer layer-camera" aria-hidden={mode !== 'camera'}>
           <CameraView active={mode === 'camera'} />
         </div>
@@ -239,52 +242,27 @@ export function Main() {
         </div>
       </div>
 
+      <CompassBar />
       <StatusLine />
       <Minimap />
       <Captions />
 
       {!handsFree && (talking || showHint) && (
         <p className="talk-hint glass" data-on={talking} aria-hidden="true">
-          {talking ? 'Listening…' : 'Press and hold to talk'}
+          {talking ? 'Listening…' : 'Tap the microphone to talk'}
         </p>
       )}
 
-      {handsFree ? (
-        <button
-          className="dock-button dock-right glass"
-          aria-pressed
-          aria-label="Hands-free listening"
-          onClick={() => {
-            setSetting('handsFree', false);
-            useStore.getState().announce('Hold to talk. Hold this button or anywhere on the screen. Change back in settings.');
-          }}
-        >
-          <MicIcon />
-        </button>
-      ) : (
-        // Hold-to-talk mode: this is a hold button like the rest of the screen. It never switches modes
-        // (that would turn the microphone back on by accident); hands-free is re-enabled in Settings.
-        <button
-          className="dock-button dock-right glass"
-          aria-pressed={talking}
-          aria-label="Hold to talk"
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            useStore.setState({ talking: true });
-          }}
-          onPointerUp={stopTalking}
-          onPointerCancel={stopTalking}
-          onKeyDown={(e) => {
-            if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) useStore.setState({ talking: true });
-          }}
-          onKeyUp={(e) => {
-            if (e.key === ' ' || e.key === 'Enter') stopTalking();
-          }}
-          onBlur={stopTalking}
-        >
-          <MicIcon />
-        </button>
-      )}
+      {/* One tap: talk (tap-to-talk) or cut the guide off. It never changes settings. */}
+      <button
+        className="dock-button dock-right glass"
+        aria-pressed={handsFree || talking}
+        aria-label={micLabel}
+        data-on={talking}
+        onClick={onMic}
+      >
+        <MicIcon />
+      </button>
       <button className="dock-button dock-left glass" aria-label="Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>
         <SlidersIcon />
       </button>

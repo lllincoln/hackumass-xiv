@@ -7,6 +7,9 @@ import { orientation } from '../sensors/orientation';
 import { useStore } from '../store';
 import { Fusion } from './fusion';
 
+/** 10 Hz: smooth enough for the dot to move continuously at walking speed. */
+const PREDICT_MS = 100;
+
 let fusion: Fusion | null = null;
 let stop: (() => void) | null = null;
 
@@ -35,7 +38,17 @@ export function startLocation(index: PackIndex): () => void {
 
   const offs = [
     on('gps', (fix) => {
-      f.gps(toENU(index.origin, fix.lon, fix.lat), fix.accuracy, fix.time);
+      // Fixes can arrive a moment after they were taken; the filter runs on "now" and moves the fix forward
+      // along the reported velocity, so the estimate is where the user is, not where they were.
+      const now = Date.now();
+      const meas = toENU(index.origin, fix.lon, fix.lat);
+      const age = Math.min(2, Math.max(0, (now - fix.time) / 1000));
+      if (age > 0 && fix.speed != null && fix.heading != null && Number.isFinite(fix.speed) && Number.isFinite(fix.heading)) {
+        const h = (fix.heading * Math.PI) / 180;
+        meas.x += Math.sin(h) * fix.speed * age;
+        meas.y += Math.cos(h) * fix.speed * age;
+      }
+      f.gps(meas, fix.accuracy, now, { speed: fix.speed, heading: fix.heading });
       publish(f);
     }),
     on('step', () => {
@@ -48,8 +61,11 @@ export function startLocation(index: PackIndex): () => void {
       publish(f);
     }),
   ];
-  // Indoor status depends on elapsed time, so re-evaluate it even when no events arrive.
-  const timer = setInterval(() => publish(f), 1000);
+  // Between events: carry the estimate forward (GPS velocity) and re-evaluate time-dependent indoor status.
+  const timer = setInterval(() => {
+    f.predict();
+    publish(f);
+  }, PREDICT_MS);
 
   stop = () => {
     offs.forEach((off) => off());

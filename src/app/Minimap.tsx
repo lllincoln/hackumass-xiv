@@ -27,7 +27,7 @@ const TURN_RATE = 9;
 /** How fast the map camera catches the displayed position (matters after a pan; otherwise it is already there). */
 const MOVE_RATE = 10;
 /** How fast the displayed position glides toward the estimate. Lower = smoother, but lags more. */
-const GLIDE_RATE = 3;
+const GLIDE_RATE = 9;
 /** A change this large is a teleport (simulator click, first fix): jump instead of gliding across campus. */
 const TELEPORT_M = 40;
 
@@ -70,7 +70,6 @@ function staticData(pack: PackIndex): { buildings: FC; ways: FC; features: FC } 
     features: {
       type: 'FeatureCollection',
       features: pack.features
-        .filter((f) => f.kind !== 'tree')
         .map((f) => ({ type: 'Feature', properties: { kind: f.kind }, geometry: { type: 'Point', coordinates: [f.lon, f.lat] } })),
     },
   };

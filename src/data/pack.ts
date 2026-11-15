@@ -6,12 +6,14 @@ import {
   pointInPolygon,
   projectOnRing,
   projectOnSegment,
+  rayRingCrossings,
   ringArea,
   ringCentroid,
   toENU,
   type LonLat,
   type Vec2,
 } from '../geo';
+import { loadTerrain } from './terrain';
 import type { CampusPack, FeatureKind, GazetteerEntry, WayKind } from './types';
 
 export type BBox = { minX: number; minY: number; maxX: number; maxY: number };
@@ -140,7 +142,8 @@ export function indexPack(raw: CampusPack): PackIndex {
 }
 
 export async function loadPack(url = '/data/campus.json'): Promise<PackIndex> {
-  const res = await fetch(url);
+  // Terrain loads alongside, so the x-ray scene is built on the real ground from the start (it is optional).
+  const [res] = await Promise.all([fetch(url), loadTerrain()]);
   if (!res.ok) throw new Error(`campus pack: HTTP ${res.status}`);
   return indexPack((await res.json()) as CampusPack);
 }
@@ -195,6 +198,30 @@ export function buildingsWithin(index: PackIndex, p: Vec2, radiusM: number): Bui
   return index.buildings.filter(
     (b) => p.x > b.minX - radiusM && p.x < b.maxX + radiusM && p.y > b.minY - radiusM && p.y < b.maxY + radiusM,
   );
+}
+
+/** Shallower than this along the line means a clipped corner. */
+const MIN_RAY_DEPTH_M = 2;
+
+export type RayHit = { building: BuildingX; enterM: number; exitM: number };
+
+/**
+ * Buildings a straight line from `p` (bearing in degrees from north) passes through, nearest first, out to
+ * `maxM`. A building containing `p` comes first with enterM 0. Holes (courtyards) are ignored.
+ */
+export function buildingsAlongRay(index: PackIndex, p: Vec2, bearingDeg: number, maxM: number): RayHit[] {
+  const hits: RayHit[] = [];
+  for (const b of buildingsWithin(index, p, maxM)) {
+    const t = rayRingCrossings(p, bearingDeg, b.outer);
+    if (t.length === 0) continue;
+    const inside = t.length % 2 === 1;
+    const enterM = inside ? 0 : t[0];
+    if (enterM > maxM) continue;
+    // A line that only clips a corner does not put the building "on" the line.
+    if (!inside && t[t.length - 1] - enterM < MIN_RAY_DEPTH_M) continue;
+    hits.push({ building: b, enterM, exitM: t[t.length - 1] });
+  }
+  return hits.sort((a, b) => a.enterM - b.enterM);
 }
 
 export function toLonLat(index: PackIndex, p: Vec2): LonLat {

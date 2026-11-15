@@ -31,10 +31,10 @@ describe('Fusion', () => {
   it('ignores later poor fixes but blends good ones', () => {
     const f = new Fusion(index);
     f.reset({ x: 100, y: 100 }, 10, 0);
-    f.gps({ x: 200, y: 200 }, 60, 1000);
+    f.gps({ x: 200, y: 200 }, 60, 0);
     expect(f.pos).toEqual({ x: 100, y: 100 });
-    f.gps({ x: 110, y: 100 }, 10, 2000);
-    // equal uncertainty → halfway, and σ shrinks by √2
+    // accuracy 15 m ≈ σ 10 m: equal uncertainty → halfway, and σ shrinks by √2
+    f.gps({ x: 110, y: 100 }, 15, 0);
     expect(f.pos?.x).toBeCloseTo(105);
     expect(f.sigma).toBeCloseTo(10 / Math.SQRT2);
   });
@@ -42,10 +42,41 @@ describe('Fusion', () => {
   it('dead-reckons along the heading and grows σ', () => {
     const f = new Fusion(index);
     f.reset({ x: 100, y: 100 }, 3, 0);
-    for (let i = 0; i < 10; i++) f.step(90);
+    for (let i = 0; i < 10; i++) f.step(90, 0);
     expect(f.pos?.x).toBeCloseTo(100 + 10 * STEP_LENGTH_M);
     expect(f.pos?.y).toBeCloseTo(100);
     expect(f.sigma).toBeCloseTo(4.5);
+  });
+
+  it('keeps up with a walk on GPS alone (no steps detected), instead of trailing far behind', () => {
+    const f = new Fusion(index);
+    f.reset({ x: 100, y: -100 }, 2, 0);
+    // 30 s walking north at 1.4 m/s, one 5 m fix a second, no speed reported by the phone
+    for (let t = 1; t <= 30; t++) f.gps({ x: 100, y: -100 + 1.4 * t }, 5, t * 1000);
+    expect(-100 + 1.4 * 30 - f.pos!.y).toBeLessThan(4);
+  });
+
+  it('follows the phone-reported GPS velocity between fixes', () => {
+    const f = new Fusion(index);
+    f.reset({ x: 100, y: -100 }, 2, 0);
+    f.gps({ x: 100, y: -100 }, 5, 0, { speed: 1.5, heading: 90 });
+    f.predict(500);
+    f.predict(1000);
+    expect(f.pos!.x).toBeCloseTo(101.5);
+    // standing still (speed below the jitter floor): no drift
+    f.gps({ x: 101.5, y: -100 }, 5, 1000, { speed: 0.1, heading: 90 });
+    const x = f.pos!.x;
+    f.predict(2000);
+    expect(f.pos!.x).toBeCloseTo(x);
+  });
+
+  it('does not use GPS velocity while footsteps are moving the estimate', () => {
+    const f = new Fusion(index);
+    f.reset({ x: 100, y: -100 }, 2, 0);
+    f.gps({ x: 100, y: -100 }, 5, 0, { speed: 1.5, heading: 90 });
+    f.step(0, 100);
+    f.predict(1000);
+    expect(f.pos!.x).toBeCloseTo(100, 0);
   });
 
   it('keeps the estimate inside the building when it would cross a wall far from a door', () => {

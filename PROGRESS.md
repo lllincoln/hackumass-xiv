@@ -21,7 +21,7 @@ Nothing is committed yet.
 - **X-ray detail:** horizon glow, distance haze, ground grid, storey lines, stair treads, compass ring, flat chevrons flowing along the route, benches with backrests, lit door panels. The viewpoint, accuracy ring and compass glide between position updates (`src/xray/glide.ts`).
 - **Snapping:** benches, bins, racks and tables stand 1.6 m from the path centre line, square to it and facing it (`snapped.facing` in the pack). Indoor features and plaza outlines are no longer snapped. SPEC §4 says 1.2 m; 1.6 m keeps the models off the path ribbon.
 - **Units:** feet and miles by default, "Metric units" switch in Settings. Tools return distances as phrases in the user's unit (`distance: "110 feet"`), so the guide repeats them without converting. See `src/units.ts`.
-- **Hold-to-talk:** starts only after a 280 ms stationary press on the background; taps, drags, buttons and the map never trigger it. The mic button is a hold button in that mode.
+- **Tap-to-talk** (replaced hold-to-talk): `src/app/talk.ts`. Tap the mic button to talk; it closes when the reply starts, after a 2.5 s pause, 7 s with no speech, or 30 s. 500 ms of mic pre-roll. Tones in `src/audio/earcons.ts`. Headset button via Media Session in `src/sensors/mediakeys.ts` (setting, off by default). The guide can switch modes with `set_hands_free`.
 - **Status panel:** guide state is shown only when there is a problem (reconnecting / unavailable).
 
 ## Verified

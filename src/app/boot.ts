@@ -11,13 +11,21 @@ import { noteToAgent } from '../nav/announce';
 import { startNavigator } from '../nav/navigator';
 import { startReportWatcher } from '../reports/watcher';
 import { startGeolocation } from '../sensors/geolocation';
+import { startMediaKeys } from '../sensors/mediakeys';
 import { startHeading } from '../sensors/heading';
 import { startMotion } from '../sensors/motion';
 import { sim } from '../sensors/sim';
 import { useStore } from '../store';
 import { unitName } from '../units';
+import { installTalk } from './talk';
 
 let booted = false;
+
+function listeningNote(): string {
+  return useStore.getState().settings.handsFree
+    ? 'Listening is hands-free: you hear the user all the time.'
+    : 'Listening is tap-to-talk: you hear the user only after they tap the talk button.';
+}
 
 /** Where the simulator starts: just outside the ILC when the pack knows it, else the middle of campus. */
 function simStart(pack: PackIndex) {
@@ -46,14 +54,18 @@ export function boot(pack: PackIndex): void {
   startReportWatcher();
 
   installTools();
+  installTalk();
+  startMediaKeys();
   live.onLive = () => {
     // A new or resumed session does not know the view changed while it was away.
-    if (useStore.getState().mode === 'xray') noteToAgent('Camera is off; user is in x-ray mode; rely on map data.');
-    noteToAgent(`The user wants distances in ${unitName()}.`);
+    noteToAgent('view', useStore.getState().mode === 'xray' ? 'Camera is off; user is in x-ray mode; rely on map data.' : 'Camera is on; user is in camera mode.');
+    noteToAgent('units', `The user wants distances in ${unitName()}.`);
+    noteToAgent('listening', listeningNote());
   };
   live.connect();
   // Tell the guide when the unit setting changes mid-conversation.
   useStore.subscribe((s, prev) => {
-    if (s.settings.metric !== prev.settings.metric) noteToAgent(`The user now wants distances in ${unitName()}.`);
+    if (s.settings.metric !== prev.settings.metric) noteToAgent('units', `The user now wants distances in ${unitName()}.`);
+    if (s.settings.handsFree !== prev.settings.handsFree) noteToAgent('listening', listeningNote());
   });
 }

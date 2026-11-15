@@ -30,7 +30,6 @@ const OVERPASS_ENDPOINTS = [
 const SNAP_MAX_M = 12;
 /** Distance from the path's centre line: half a path's width plus room for the object itself. */
 const SNAP_OFFSET_M = 1.6;
-const MAX_TREES = 400;
 const LEVEL_M = 3.2;
 const DEFAULT_HEIGHT_M = 8;
 
@@ -40,7 +39,7 @@ const HEAD = `[out:json][timeout:60][bbox:${BBOX.s},${BBOX.w},${BBOX.n},${BBOX.e
 const QUERIES: Record<string, string> = {
   buildings: `${HEAD}(way["building"];relation["building"];);out geom;`,
   ways: `${HEAD}way["highway"~"^(footway|path|pedestrian|steps|service|residential|living_street|unclassified|tertiary|secondary)$"];out geom;`,
-  points: `${HEAD}(node["amenity"~"^(bench|waste_basket|bicycle_parking|drinking_water|toilets|bus_station)$"];node["highway"="bus_stop"];node["leisure"="picnic_table"];node["entrance"];node["natural"="tree"];);out geom;`,
+  points: `${HEAD}(node["amenity"~"^(bench|waste_basket|bicycle_parking|drinking_water|toilets|bus_station)$"];node["highway"="bus_stop"];node["leisure"="picnic_table"];node["entrance"];);out geom;`,
 };
 
 type Tags = Record<string, string>;
@@ -81,7 +80,6 @@ const FEATURE_LABEL: Record<FeatureKind, string> = {
   bus_stop: 'bus stop',
   entrance: 'entrance',
   picnic_table: 'picnic table',
-  tree: 'tree',
 };
 
 const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -334,7 +332,6 @@ function featureKind(tags: Tags): FeatureKind | null {
   if (tags.highway === 'bus_stop') return 'bus_stop';
   if (tags.leisure === 'picnic_table') return 'picnic_table';
   if (tags.entrance && tags.entrance !== 'no' && tags.entrance !== 'emergency') return 'entrance';
-  if (tags.natural === 'tree') return 'tree';
   return null;
 }
 
@@ -359,7 +356,6 @@ async function main() {
   const buildings: PackBuilding[] = [];
   const ways: PackWay[] = [];
   const features: PackFeature[] = [];
-  const trees: PackFeature[] = [];
   const plazaIds = new Set<string>();
 
   for (const el of elements) {
@@ -417,13 +413,10 @@ async function main() {
         lat: r6(el.lat),
         ...(tags.name ? { name: tags.name } : {}),
       };
-      (kind === 'tree' ? trees : features).push(f);
+      features.push(f);
     }
   }
 
-  // Trees: keep the ones closest to the campus center, capped.
-  trees.sort((a, b) => Math.hypot(enu([a.lon, a.lat]).x, enu([a.lon, a.lat]).y) - Math.hypot(enu([b.lon, b.lat]).x, enu([b.lon, b.lat]).y));
-  features.push(...trees.slice(0, MAX_TREES));
 
   // Entrances → the building whose outline they sit on.
   const outlines = buildings.map((b) => {
@@ -458,7 +451,7 @@ async function main() {
   }
   let snapped = 0;
   for (const f of features) {
-    if (f.kind === 'entrance' || f.kind === 'tree') continue;
+    if (f.kind === 'entrance') continue;
     const p = enu([f.lon, f.lat]);
     // Things inside a building (lobby benches, indoor bins) stay where they are: pulling them to an outdoor path is wrong.
     if (outlines.some((o) => p.x >= o.minX && p.x <= o.maxX && p.y >= o.minY && p.y <= o.maxY && pointInRing(p, o.ring))) continue;
@@ -497,7 +490,7 @@ async function main() {
     seen.add(b.name.toLowerCase());
   }
   for (const f of features) {
-    if (!f.name || f.kind === 'tree') continue;
+    if (!f.name) continue;
     const key = `${f.name.toLowerCase()}|${f.kind}`;
     // an entrance named like its building adds nothing
     if (seen.has(key) || (f.kind === 'entrance' && seen.has(f.name.toLowerCase()))) continue;
@@ -536,10 +529,10 @@ async function main() {
   console.log(`  size        ${(json.length / 1e6).toFixed(2)} MB`);
   console.log(`  buildings   ${buildings.length} (${buildings.filter((b) => b.name).length} named)`);
   console.log(`  ways        ${ways.length}`);
-  console.log(`  features    ${features.length}  bench ${count('bench')}, trash ${count('trash')}, bike ${count('bike_parking')}, entrance ${count('entrance')} (${attached} on a building), bus ${count('bus_stop')}, tree ${count('tree')}`);
+  console.log(`  features    ${features.length}  bench ${count('bench')}, trash ${count('trash')}, bike ${count('bike_parking')}, entrance ${count('entrance')} (${attached} on a building), bus ${count('bus_stop')}`);
   console.log(`  snapped     ${snapped}`);
   console.log(`  gazetteer   ${gazetteer.length}`);
-  if (json.length > 3e6) console.warn('  !! pack is over the ~3 MB target: shrink the bbox or drop service roads/trees');
+  if (json.length > 3e6) console.warn('  !! pack is over the ~3 MB target: shrink the bbox or drop service roads');
 }
 
 main().catch((err) => {

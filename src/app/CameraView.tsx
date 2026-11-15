@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { live } from '../gemini/session';
 import { startFrames, stopFrames } from '../gemini/video';
+import { startHazardWatcher } from '../hazard/watcher';
 import { media } from '../sensors/media';
 import { useStore } from '../store';
 
-/** Full-screen camera feed. While `active`, it sends about one frame a second to the guide. */
+/** Full-screen camera feed. While `active`, it sends about one frame a second to the guide; the hazard check always runs. */
 export function CameraView({ active }: { active: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraError = useStore((s) => s.cameraError);
@@ -35,6 +36,13 @@ export function CameraView({ active }: { active: boolean }) {
     startFrames(video, (jpeg) => live.sendVideo(jpeg));
     return () => stopFrames();
   }, [stream, active]);
+
+  // The hazard check runs in both views: in x-ray it is what brings the camera up when something is ahead.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream) return;
+    return startHazardWatcher(video);
+  }, [stream]);
 
   return (
     <div className="camera">
