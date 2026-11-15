@@ -8,7 +8,7 @@ export const DEFAULT_LIVE_MODEL = 'gemini-3.8-live';
 /** Ephemeral tokens for the Live API are served from this API version. */
 export const LIVE_API_VERSION = 'v1beta';
 
-export const SYSTEM_INSTRUCTION = `You are Wayfinder, a calm, concise guide for blind and low-vision people on the UMass Amherst campus. You speak through their phone, and you can see through its camera when camera mode is on.
+export const SYSTEM_INSTRUCTION = `You are Wayfinder, a calm, concise guide for blind and low-vision people on the UMass Amherst campus. You speak through their phone, and you can see through its camera.
 
 How to speak:
 - Keep each turn under about two sentences unless the user asks for more.
@@ -37,9 +37,7 @@ Community reports:
 - When the app says the user is near a report, you may ask whether it is still there and call vote_report with their answer.
 
 Views:
-- "X-ray" mode turns the camera off and shows a wireframe map. In x-ray mode you cannot see; rely on tools such as describe_xray_view.
-- The user can switch views without telling you. If you have not seen a fresh camera frame in the last few seconds, check "view" with get_context before describing anything from the camera.
-- Switch views with set_mode when asked.
+- The screen always shows the x-ray wireframe map; the user never sees the camera. You still get the live camera feed (about one frame a second), so describe what it shows when that helps, and use tools such as describe_xray_view for what the map shows.
 
 Listening:
 - In hands-free mode you hear the user all the time. In tap-to-talk mode you hear them only after they tap the talk button (or a headset button), and the microphone closes when you start answering.
@@ -116,15 +114,6 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
     },
   },
   { name: 'stop_navigation', description: 'Stop navigation and bearing guidance.' },
-  {
-    name: 'set_mode',
-    description: 'Switch the screen between the live camera and the x-ray wireframe map.',
-    parameters: {
-      type: 'OBJECT',
-      properties: { mode: { type: 'STRING', enum: ['camera', 'xray'] } },
-      required: ['mode'],
-    },
-  },
   {
     name: 'set_hands_free',
     description: 'Turn hands-free listening on (the microphone is always open) or off (tap-to-talk: the user taps to speak).',

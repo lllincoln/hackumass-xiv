@@ -1,9 +1,8 @@
 // Live hazard check: every 2 s, in either view, send the current camera frame to /api/hazard (Gemini Decisions API,
-// well under a second): is something about to be in the user's way, what is it, and on which side. On yes, the view
-// switches to the camera (if it was on x-ray) and the guide says what it is and what to do ("Crosswalk straight ahead.
-// Stop at the curb, listen, and cross straight when you don't hear any cars."). On the next no, back to x-ray.
+// well under a second): is something about to be in the user's way, what is it, and on which side. On yes, the guide
+// says what it is and what to do ("Crosswalk straight ahead. Stop at the curb, listen, and cross straight when you
+// don't hear any cars."). The screen stays on the x-ray view throughout; the camera runs hidden for this check.
 
-import { hazardCleared, openCameraForHazard } from '../app/mode';
 import { captureFrame } from '../gemini/video';
 import { hazardTone } from '../audio/earcons';
 import { live } from '../gemini/session';
@@ -56,10 +55,7 @@ export function startHazardWatcher(video: HTMLVideoElement): () => void {
           // no frame or a failed check: change nothing
         } else if (!result.hazard) {
           clearSinceWarning = true;
-          hazardCleared();
         } else {
-          // Switch first, so the guide is already looking when it gets the warning.
-          openCameraForHazard();
           // Warn once per hazard: again only after the path was clear in between, when it is something else,
           // or after a while.
           const now = Date.now();

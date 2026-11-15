@@ -4,7 +4,6 @@
 import type { FunctionCall } from '@google/genai';
 import { FEATURE_KINDS } from '../../shared/agent';
 import { PERMANENT_KINDS, REPORT_KINDS, REPORT_LABELS, type ReportKind } from '../../shared/reports';
-import { setMode } from '../app/mode';
 import { searchPlaces } from '../data/gazetteer';
 import { elevationAt } from '../data/terrain';
 import { buildingsAlongRay, buildingsWithin, featuresWithin, nearestFeatures, toLocal, toLonLat, type BuildingX, type PackIndex } from '../data/pack';
@@ -250,13 +249,6 @@ const tools: Record<string, (args: Args) => Promise<Result> | Result> = {
 
   stop_navigation() {
     return { ok: true, was_navigating: stopNavigation() };
-  },
-
-  set_mode(args) {
-    const mode = args.mode === 'xray' ? 'xray' : args.mode === 'camera' ? 'camera' : null;
-    if (!mode) throw new ToolError('mode must be "camera" or "xray".');
-    setMode(mode);
-    return { ok: true, mode };
   },
 
   set_hands_free(args) {

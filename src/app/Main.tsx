@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useStore, type GeminiStatus, type Settings } from '../store';
 import { distanceShort } from '../units';
 import { CameraView } from './CameraView';
@@ -6,7 +6,6 @@ import { CompassBar } from './CompassBar';
 import { DevSim } from './DevSim';
 import { ArrowIcon, MicIcon, SlidersIcon } from './icons';
 import { Minimap } from './Minimap';
-import { setMode, toggleMode } from './mode';
 import { toggleTalk } from './talk';
 
 // three.js lives in its own chunk, but the download starts right away (not on first use), and the scene is
@@ -15,9 +14,6 @@ const loadXRay = () => import('../xray/XRayView');
 const XRayView = lazy(loadXRay);
 void loadXRay().catch(() => undefined);
 
-const DOUBLE_TAP_MS = 350;
-/** Movement beyond this means a drag, not a tap. */
-const MOVE_TOLERANCE_PX = 12;
 
 /** Only problems are shown: when the guide is working there is nothing to say about it. */
 const GEMINI_PROBLEMS: Partial<Record<GeminiStatus, string>> = {
@@ -113,7 +109,6 @@ const SWITCHES: { key: keyof Settings; title: string; detail: string; xrayOnly?:
 function SettingsSheet({ onClose }: { onClose: () => void }) {
   const settings = useStore((s) => s.settings);
   const setSetting = useStore((s) => s.setSetting);
-  const mode = useStore((s) => s.mode);
   const doneRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -128,18 +123,6 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
       <section className="sheet glass" role="dialog" aria-modal="true" aria-label="Settings">
         <div className="sheet-grip" aria-hidden="true" />
         <h2>Settings</h2>
-        <button
-          className="switch-row"
-          role="switch"
-          aria-checked={mode === 'camera'}
-          onClick={() => setMode(mode === 'camera' ? 'xray' : 'camera')}
-        >
-          <span className="switch-text">
-            <strong>Camera view</strong>
-            <span>Off: x-ray map. Turns on by itself while a hazard is ahead.</span>
-          </span>
-          <span className="switch-track" aria-hidden="true" />
-        </button>
         {SWITCHES.map(({ key, title, detail }) => (
           <button
             key={key}
@@ -173,7 +156,6 @@ export function Main() {
   const speaking = useStore((s) => s.speaking);
   const isSim = useStore((s) => s.sim);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const lastTap = useRef(0);
 
   // The "tap to talk" reminder shows for a few seconds after switching off hands-free, then gets out of the way.
   const [showHint, setShowHint] = useState(false);
@@ -183,33 +165,6 @@ export function Main() {
     const t = setTimeout(() => setShowHint(false), 4000);
     return () => clearTimeout(t);
   }, [handsFree]);
-
-  // The screen behind the controls: double-tap to switch views. Taps on buttons, the map or panels do not count,
-  // nor does a drag.
-  const down = useRef<{ id: number; x: number; y: number } | null>(null);
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!e.isPrimary || e.button !== 0) return;
-    if ((e.target as Element).closest('button, a, input, select, textarea, [role="dialog"], .minimap, .sim')) return;
-    down.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
-  };
-
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = down.current;
-    down.current = null;
-    if (!d || d.id !== e.pointerId || Math.hypot(e.clientX - d.x, e.clientY - d.y) > MOVE_TOLERANCE_PX) return;
-    const now = performance.now();
-    if (now - lastTap.current < DOUBLE_TAP_MS) {
-      lastTap.current = 0;
-      toggleMode();
-    } else {
-      lastTap.current = now;
-    }
-  };
-
-  const onPointerCancel = () => {
-    down.current = null;
-  };
 
   const micLabel = handsFree ? (speaking ? 'Stop the guide' : 'Listening hands-free') : talking ? 'Stop listening' : 'Talk';
   const onMic = () => {
@@ -225,15 +180,11 @@ export function Main() {
       <div
         className={`stage ${talking ? 'stage-talking' : ''}`}
         data-mode={mode}
-        onPointerDown={onPointerDown}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onPointerLeave={onPointerCancel}
         onContextMenu={(e) => e.preventDefault()}
       >
-        {/* Both views stay mounted; the x-ray layer is revealed in a circle growing out of the middle of the screen. */}
+        {/* The screen always shows x-ray. The camera stays mounted but hidden: the guide and the hazard check still get its frames. */}
         <div className="layer layer-camera" aria-hidden={mode !== 'camera'}>
-          <CameraView active={mode === 'camera'} />
+          <CameraView />
         </div>
         <div className="layer layer-xray" aria-hidden={mode !== 'xray'}>
           <Suspense fallback={null}>

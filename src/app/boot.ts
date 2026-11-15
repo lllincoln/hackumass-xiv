@@ -57,8 +57,7 @@ export function boot(pack: PackIndex): void {
   installTalk();
   startMediaKeys();
   live.onLive = () => {
-    // A new or resumed session does not know the view changed while it was away.
-    noteToAgent('view', useStore.getState().mode === 'xray' ? 'Camera is off; user is in x-ray mode; rely on map data.' : 'Camera is on; user is in camera mode.');
+    noteToAgent('view', 'The screen shows the x-ray map; you still get the camera feed, which the user does not see.');
     noteToAgent('units', `The user wants distances in ${unitName()}.`);
     noteToAgent('listening', listeningNote());
   };

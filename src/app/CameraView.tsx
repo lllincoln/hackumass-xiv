@@ -5,8 +5,8 @@ import { startHazardWatcher } from '../hazard/watcher';
 import { media } from '../sensors/media';
 import { useStore } from '../store';
 
-/** Full-screen camera feed. While `active`, it sends about one frame a second to the guide; the hazard check always runs. */
-export function CameraView({ active }: { active: boolean }) {
+/** Camera feed, hidden behind the x-ray view. It always sends about one frame a second to the guide and runs the hazard check. */
+export function CameraView() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraError = useStore((s) => s.cameraError);
   const [stream, setStream] = useState<MediaStream | null>(media.camera);
@@ -28,16 +28,14 @@ export function CameraView({ active }: { active: boolean }) {
     void video.play().catch(() => undefined);
   }, [stream]);
 
-  // In x-ray mode the guide gets no frames (it is told the camera is off), but the stream stays warm
-  // so switching back is instant.
+  // The user never sees this feed, but the guide does.
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !stream || !active) return;
+    if (!video || !stream) return;
     startFrames(video, (jpeg) => live.sendVideo(jpeg));
     return () => stopFrames();
-  }, [stream, active]);
+  }, [stream]);
 
-  // The hazard check runs in both views: in x-ray it is what brings the camera up when something is ahead.
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !stream) return;
