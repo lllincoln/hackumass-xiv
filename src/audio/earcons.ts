@@ -27,6 +27,14 @@ export function listenStartTone(): void {
   if ('vibrate' in navigator) navigator.vibrate(20);
 }
 
+/** Three quick high beeps: hazard ahead. Plays at once, before the spoken warning. */
+export function hazardTone(): void {
+  tone(1320, 0, 0.08);
+  tone(1320, 0.12, 0.08);
+  tone(1320, 0.24, 0.12);
+  if ('vibrate' in navigator) navigator.vibrate([80, 60, 80, 60, 120]);
+}
+
 /** Falling pair: the guide stopped listening. */
 export function listenStopTone(): void {
   tone(880, 0, 0.09);

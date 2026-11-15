@@ -23,6 +23,8 @@ export type TextOptions = {
   key?: string;
   /** Drop the message if it could not be sent within this long. */
   maxAgeMs?: number;
+  /** Safety first: cut the guide off and send now instead of waiting for the turn to end (hazard warnings). */
+  urgent?: boolean;
 };
 
 type Outgoing = { text: string; key?: string; expiresAt: number };
@@ -373,6 +375,20 @@ class LiveAgent {
    */
   sendText(text: string, opts: TextOptions = {}): boolean {
     if (!this.isLive() || !this.session) return false;
+    if (opts.urgent) {
+      // Anything queued is folded in so it is not lost; silent notes (the view switched to camera) go first.
+      const text2 = [...this.takeNotes(), ...this.outbox.filter((m) => m.key !== opts.key).map((m) => m.text), text].join('\n');
+      this.outbox = [];
+      this.cutOff();
+      try {
+        this.session.sendRealtimeInput({ text: text2 });
+        this.markBusy();
+        return true;
+      } catch (err) {
+        console.warn('[live] urgent send failed', err);
+        return false;
+      }
+    }
     const msg: Outgoing = { text, key: opts.key, expiresAt: Date.now() + (opts.maxAgeMs ?? Infinity) };
     const i = opts.key ? this.outbox.findIndex((m) => m.key === opts.key) : -1;
     if (i >= 0) this.outbox[i] = msg;
